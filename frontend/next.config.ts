@@ -1,12 +1,8 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  reactStrictMode: true,
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
   images: {
-    domains: [
-      'image.tmdb.org',
-      'localhost',
-      'placehold.co'
-    ],
+    domains: ['image.tmdb.org'], 
     remotePatterns: [
       {
         protocol: 'https',
@@ -15,22 +11,6 @@ const nextConfig = {
       },
     ],
   },
-
-  api: {
-    responseLimit: '8mb',
-    bodyParser: {
-      sizeLimit: '8mb',
-    },
-  },
-  
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  swcMinify: true,
-  staticPageGenerationTimeout: 120,
-  env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
-  },
 };
 
-module.exports = nextConfig;
+export default nextConfig;

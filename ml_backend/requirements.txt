@@ -1,0 +1,14 @@
+pandas
+numpy
+scikit-learn
+fastapi==0.104.1
+uvicorn==0.23.2
+sqlalchemy
+pymysql
+python-dotenv==1.0.0
+cryptography
+python-jose[cryptography]
+passlib[bcrypt]
+email-validator
+pydantic
+bcrypt
