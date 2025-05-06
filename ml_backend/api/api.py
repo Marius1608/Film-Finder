@@ -1,6 +1,10 @@
+import os
 from datetime import datetime, timedelta
+from pydoc import text
 
-from fastapi import FastAPI, HTTPException, Depends
+import openai
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Depends, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict
@@ -16,6 +20,10 @@ from database.connection import get_db
 from sqlalchemy.orm import Session
 import logging
 
+load_dotenv()
+
+openai_api_key = os.getenv("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")
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -30,10 +38,18 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
+class ChatQuestionRequest(BaseModel):
+    movie_id: int
+    question: str
+
+class ChatResponse(BaseModel):
+    answer: str
+    source: Optional[str] = "Assistant"
 
 class MovieRecommendationRequest(BaseModel):
     method: str = "hybrid"
@@ -55,12 +71,15 @@ class RatingRequest(BaseModel):
 
 
 class MovieResponse(BaseModel):
-    movie_id: int
+    id: int
     title: str
-    year: Optional[int]
-    genres: Optional[str]
-    average_rating: Optional[float]
-    rating_count: Optional[int]
+    year: Optional[int] = None
+    genres: Optional[str] = None
+    average_rating: Optional[float] = None
+    rating_count: Optional[int] = None
+    imdb_id: Optional[str] = None
+    tmdb_id: Optional[int] = None
+    overview: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -104,6 +123,33 @@ def get_recommendation_engine():
         yield engine
     finally:
         engine.close()
+
+def get_movie_details(self, movie_id: int) -> Dict:
+    try:
+        query = text("""
+            SELECT m.*, ms.avg_rating, ms.rating_count
+            FROM movies m
+            LEFT JOIN movie_stats ms ON m.id = ms.movie_id
+            WHERE m.id = :movie_id
+        """)
+        result = self.session.execute(query, {"movie_id": movie_id}).first()
+
+        if result:
+            return {
+                'movie_id': result.id,
+                'title': result.title,
+                'year': result.year,
+                'genres': result.genres,
+                'average_rating': result.avg_rating,
+                'rating_count': result.rating_count,
+                'imdb_id': result.imdb_id,
+                'tmdb_id': result.tmdb_id
+            }
+        return None
+
+    except Exception as e:
+        logger.error(f"Error getting movie details: {e}")
+        return None
 
 
 # Endpoints
@@ -582,40 +628,209 @@ async def get_user_statistics(
     }
 
 
-@app.post("/chatbot/movie-details", tags=["Chatbot"])
+@app.post("/chatbot/movie-details", tags=["Chatbot"], response_model=ChatResponse)
 async def ask_movie_question(
-        movie_id: int,
-        question: str,
+        request: ChatQuestionRequest,
         current_user: UserApplication = Depends(get_current_user),
         db: Session = Depends(get_db),
         engine: RecommendationEngine = Depends(get_recommendation_engine)
 ):
-    movie = engine.get_movie_details(movie_id)
+
+    movie = engine.get_movie_details(request.movie_id)
     if not movie:
         raise HTTPException(status_code=404, detail="Movie not found")
 
-    # Răspunsuri predefined pentru chat
-    question_lower = question.lower()
+    movie_context = f"""
+    Movie Title: {movie['title']}
+    Year: {movie.get('year', 'Unknown')}
+    Genres: {movie.get('genres', 'None specified')}
+    Average Rating: {movie.get('average_rating', 'N/A')}
+    Number of Ratings: {movie.get('rating_count', 0)}
+    """
+
+    if 'overview' in movie and movie['overview']:
+        movie_context += f"Overview: {movie['overview']}\n"
+
+    question_lower = request.question.lower()
 
     if "plot" in question_lower or "story" in question_lower:
-        return {
-            "answer": f"This movie is about {movie['title']}. Please check external sources for detailed plot information."}
-
+        if 'overview' in movie and movie['overview']:
+            return ChatResponse(
+                answer=f"Here's the plot summary for {movie['title']}: {movie['overview']}",
+                source="Database"
+            )
+        else:
+            return ChatResponse(
+                answer=f"I don't have a detailed plot summary for {movie['title']}. Please check external sources for more information.",
+                source="Database"
+            )
     elif "rating" in question_lower:
-        return {
-            "answer": f"{movie['title']} has an average rating of {movie.get('average_rating', 'N/A')} based on {movie.get('rating_count', 0)} ratings."}
-
+        return ChatResponse(
+            answer=f"{movie['title']} has an average rating of {movie.get('average_rating', 'N/A')} based on {movie.get('rating_count', 0)} ratings.",
+            source="Database"
+        )
     elif "genre" in question_lower:
-        return {
-            "answer": f"{movie['title']} belongs to the following genres: {movie.get('genres', 'No genres specified')}."}
-
+        return ChatResponse(
+            answer=f"{movie['title']} belongs to the following genres: {movie.get('genres', 'No genres specified')}.",
+            source="Database"
+        )
     elif "year" in question_lower or "when" in question_lower:
-        return {"answer": f"{movie['title']} was released in {movie.get('year', 'Unknown year')}."}
+        return ChatResponse(
+            answer=f"{movie['title']} was released in {movie.get('year', 'Unknown year')}.",
+            source="Database"
+        )
 
+    if openai_api_key:
+        try:
+            openai.api_key = openai_api_key
+
+            system_prompt = f"""
+            You are a helpful AI assistant that provides information about movies.
+            You're currently discussing the movie: {movie['title']}.
+
+            Here are the details about this movie:
+            {movie_context}
+
+            Answer questions about this movie based on these details.
+            If the question cannot be answered with the provided information, politely say so and suggest what information might be available.
+            Keep your answers concise, friendly, and informative.
+            """
+
+            logger.info(f"Sending request to OpenAI for movie {movie['title']}, question: {request.question}")
+
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": request.question}
+                ],
+                temperature=0.7,
+                max_tokens=300
+            )
+
+            answer = response.choices[0].message.content
+
+            return ChatResponse(
+                answer=answer,
+                source="OpenAI"
+            )
+
+        except Exception as e:
+            logger.error(f"Error with OpenAI: {str(e)}")
+
+    return ChatResponse(
+        answer=f"I can provide information about {movie['title']}'s rating, genres, release year, and other basic details. What would you like to know?",
+        source="Fallback"
+    )
+
+@app.get("/movies/all", response_model=List[MovieResponse], tags=["Movies"])
+async def get_all_movies(
+        limit: int = 100,
+        skip: int = 0,
+        sort_by: str = "popularity",
+        engine: RecommendationEngine = Depends(get_recommendation_engine)
+):
+    try:
+        query = text("""
+            SELECT m.id as movie_id, m.title, m.year, m.genres, m.overview, m.poster_path,
+                   ms.avg_rating, ms.rating_count
+            FROM movies m
+            LEFT JOIN movie_stats ms ON m.id = ms.movie_id
+            ORDER BY 
+                CASE WHEN :sort_by = 'title' THEN m.title END ASC,
+                CASE WHEN :sort_by = 'year' THEN m.year END DESC,
+                CASE WHEN :sort_by = 'rating' THEN ms.avg_rating END DESC,
+                CASE WHEN :sort_by = 'popularity' OR :sort_by = '' THEN 
+                    (ms.avg_rating * LOG(ms.rating_count + 1)) 
+                END DESC
+            LIMIT :limit OFFSET :skip
+        """)
+
+        results = engine.session.execute(query, {
+            "sort_by": sort_by,
+            "limit": limit,
+            "skip": skip
+        }).fetchall()
+
+        movies = []
+        for row in results:
+            movies.append({
+                'movie_id': row.movie_id,
+                'title': row.title,
+                'year': row.year,
+                'genres': row.genres,
+                'overview': row.overview,
+                'poster_path': row.poster_path,
+                'average_rating': row.avg_rating,
+                'rating_count': row.rating_count
+            })
+
+        return movies
+
+    except Exception as e:
+        logger.error(f"Error getting all movies: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving movies")
+
+
+router = APIRouter()
+
+
+@router.get("/watchlist/check/{movie_id}", tags=["Watchlist"])
+async def check_watchlist_status(
+        movie_id: int,
+        current_user=Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+
+    watchlist_item = db.query(Watchlist).filter(
+        Watchlist.user_app_id == current_user.id,
+        Watchlist.movie_id == movie_id
+    ).first()
+
+    return {"in_watchlist": watchlist_item is not None}
+
+
+@router.get("/users/{user_id}/ratings/{movie_id}", tags=["Ratings"])
+async def get_user_rating(
+        user_id: int,
+        movie_id: int,
+        db: Session = Depends(get_db)
+):
+
+    from database.models import Rating
+
+    rating = db.query(Rating).filter(
+        Rating.user_id == user_id,
+        Rating.movie_id == movie_id
+    ).first()
+
+    # Also check app_ratings table
+    app_rating = db.query(AppRating).filter(
+        AppRating.user_app_id == user_id,
+        AppRating.movie_id == movie_id
+    ).first()
+
+    if rating:
+        return {
+            "user_id": rating.user_id,
+            "movie_id": rating.movie_id,
+            "rating": float(rating.rating),
+            "timestamp": rating.timestamp
+        }
+    elif app_rating:
+        return {
+            "user_id": app_rating.user_app_id,
+            "movie_id": app_rating.movie_id,
+            "rating": float(app_rating.rating),
+            "timestamp": app_rating.timestamp
+        }
     else:
         return {
-            "answer": f"I can provide information about {movie['title']}'s rating, genres, release year, and other basic details. What would you like to know?"}
-
+            "user_id": user_id,
+            "movie_id": movie_id,
+            "rating": None,
+            "timestamp": None
+        }
 
 if __name__ == "__main__":
     import uvicorn

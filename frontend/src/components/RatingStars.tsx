@@ -1,7 +1,5 @@
-'use client';
-
+import { useState, useEffect } from 'react';
 import { Star } from 'lucide-react';
-import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
 interface RatingStarsProps {
@@ -9,21 +7,35 @@ interface RatingStarsProps {
   onRatingChange?: (rating: number) => void;
   readonly?: boolean;
   size?: 'sm' | 'md' | 'lg';
-  maxStars?: number;
+  count?: number;
   className?: string;
   showValue?: boolean;
+  precision?: 'half' | 'full';
+  color?: string;
+  emptyColor?: string;
+  animated?: boolean;
 }
 
-export default function RatingStars({ 
-  rating, 
+const RatingStars = ({ 
+  rating = 0, 
   onRatingChange, 
   readonly = false,
   size = 'md',
-  maxStars = 5,
-  className,
-  showValue = true
-}: RatingStarsProps) {
+  count = 5,
+  className = '',
+  showValue = true,
+  precision = 'full',
+  color = 'text-yellow-400',
+  emptyColor = 'text-gray-300',
+  animated = true
+}: RatingStarsProps) => {
   const [hoverRating, setHoverRating] = useState(0);
+  const [displayRating, setDisplayRating] = useState(rating);
+
+  // Update internal state when prop changes
+  useEffect(() => {
+    setDisplayRating(rating);
+  }, [rating]);
 
   const getSizeClass = () => {
     switch (size) {
@@ -33,56 +45,90 @@ export default function RatingStars({
     }
   };
 
-  const handleMouseEnter = (starIndex: number) => {
-    if (!readonly) setHoverRating(starIndex);
-  };
-
-  const handleMouseLeave = () => {
-    if (!readonly) setHoverRating(0);
-  };
-
-  const handleClick = (starIndex: number) => {
-    if (!readonly && onRatingChange) {
-      // If clicking the same star as current rating, remove the rating
-      const newRating = rating === starIndex ? 0 : starIndex;
-      onRatingChange(newRating);
-    }
-  };
-
   const isStarFilled = (starIndex: number) => {
-    if (hoverRating > 0) {
-      return starIndex <= hoverRating;
+    const value = hoverRating > 0 ? hoverRating : displayRating;
+    
+    if (precision === 'half') {
+      return starIndex <= Math.floor(value) || 
+             (starIndex === Math.ceil(value) && value % 1 >= 0.5);
     }
-    return starIndex <= rating;
+    
+    return starIndex <= value;
+  };
+
+  const isStarHalfFilled = (starIndex: number) => {
+    if (precision !== 'half') return false;
+    
+    const value = hoverRating > 0 ? hoverRating : displayRating;
+    return starIndex === Math.ceil(value) && value % 1 > 0 && value % 1 < 0.5;
+  };
+
+  const getRatingValue = (starIndex: number, event: React.MouseEvent) => {
+    if (precision === 'half') {
+      const rect = (event.target as HTMLElement).getBoundingClientRect();
+      const halfPoint = rect.left + rect.width / 2;
+      return event.clientX < halfPoint ? starIndex - 0.5 : starIndex;
+    }
+    return starIndex;
   };
 
   return (
-    <div className={cn("flex items-center gap-1", className)}>
-      {Array.from({ length: maxStars }, (_, i) => i + 1).map((star) => (
-        <button
-          key={star}
-          className={`${!readonly && 'hover:scale-110'} transition-transform focus:outline-none`}
-          onMouseEnter={() => handleMouseEnter(star)}
-          onMouseLeave={handleMouseLeave}
-          onClick={() => handleClick(star)}
-          disabled={readonly}
-          aria-label={`Rate ${star} out of ${maxStars} stars`}
-          type="button"
-        >
-          <Star 
-            className={`${getSizeClass()} ${
-              isStarFilled(star) 
-                ? 'fill-yellow-400 text-yellow-400' 
-                : 'text-gray-300'
-            }`}
-          />
-        </button>
-      ))}
-      {showValue && rating > 0 && (
-        <span className="ml-2 text-sm text-gray-600">
-          {rating.toFixed(1)}
+    <div className={cn("flex items-center", className)}>
+      <div className="flex gap-1">
+        {Array.from({ length: count }, (_, i) => i + 1).map((starIndex) => (
+          <button
+            key={starIndex}
+            type="button"
+            className={cn(
+              "focus:outline-none transition-transform", 
+              !readonly && animated && "hover:scale-110",
+              "disabled:cursor-not-allowed"
+            )}
+            onMouseEnter={() => !readonly && setHoverRating(starIndex)}
+            onMouseMove={(e) => {
+              if (readonly || precision === 'full') return;
+              const value = getRatingValue(starIndex, e);
+              if (value !== hoverRating) {
+                setHoverRating(value);
+              }
+            }}
+            onMouseLeave={() => !readonly && setHoverRating(0)}
+            onClick={(e) => {
+              if (readonly || !onRatingChange) return;
+              const value = getRatingValue(starIndex, e);
+              onRatingChange(value);
+              setDisplayRating(value);
+            }}
+            disabled={readonly}
+            aria-label={`Rate ${starIndex} out of ${count}`}
+          >
+            <Star 
+              className={cn(
+                getSizeClass(),
+                isStarFilled(starIndex) 
+                  ? `fill-current ${color} ${color}` 
+                  : isStarHalfFilled(starIndex)
+                    ? `fill-current ${color} ${color}`
+                    : emptyColor,
+                "transition-colors"
+              )}
+              style={
+                isStarHalfFilled(starIndex) 
+                  ? { clipPath: 'inset(0 50% 0 0)' } 
+                  : undefined
+              }
+            />
+          </button>
+        ))}
+      </div>
+      
+      {showValue && displayRating > 0 && (
+        <span className="ml-2 text-sm font-medium text-gray-600">
+          {displayRating.toFixed(precision === 'half' ? 1 : 0)}
         </span>
       )}
     </div>
   );
-}
+};
+
+export default RatingStars;

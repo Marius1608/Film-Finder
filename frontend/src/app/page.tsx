@@ -38,7 +38,6 @@ export default function Home() {
               key={movie.movie_id} 
               movie={movie}
               onSelect={(movie) => {
-                // Redirect to movie details page
                 window.location.href = `/movies/${movie.movie_id}`;
               }}
             />
