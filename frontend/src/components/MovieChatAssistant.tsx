@@ -68,7 +68,6 @@ export function MovieChatAssistant({ movieId, movieTitle }: MovieChatAssistantPr
 
   return (
     <DialogContent className="max-w-lg h-[600px] flex flex-col p-0">
-      {/* Added DialogTitle for accessibility */}
       <DialogTitle className="sr-only">Chat about {movieTitle}</DialogTitle>
       <Card className="border-0 h-full flex flex-col">
         <CardHeader>

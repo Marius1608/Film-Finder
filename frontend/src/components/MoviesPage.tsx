@@ -139,7 +139,6 @@ const MoviesPage = () => {
   }, [page, pageSize, sortBy, searchQuery, selectedGenre]);
 
   const applyFilters = () => {
-    
     setPage(1);
     
     const params = new URLSearchParams();
@@ -161,8 +160,7 @@ const MoviesPage = () => {
     router.push('/movies');
   };
 
-  const hasActiveFilters = selectedGenre || searchQuery || sortBy !== 'popularity';
-  //const totalPages = Math.ceil(movies.length / pageSize) || 1;
+  const hasActiveFilters = selectedGenre !== 'all' || searchQuery || sortBy !== 'popularity';
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -265,7 +263,7 @@ const MoviesPage = () => {
         {hasActiveFilters && (
           <div className="flex flex-wrap gap-2 mt-2">
             <span className="text-sm font-medium">Active Filters:</span>
-            {selectedGenre && (
+            {selectedGenre !== 'all' && (
               <Badge variant="secondary" className="flex items-center gap-1">
                 Genre: {selectedGenre}
               </Badge>
@@ -301,7 +299,18 @@ const MoviesPage = () => {
             {movies.map((movie) => (
               <MovieCard
                 key={movie.movie_id}
-                movie={movie}
+                movie={{
+                  movie_id: movie.movie_id,
+                  title: movie.title,
+                  year: movie.year,
+                  genres: movie.genres,
+                  poster_path: movie.poster_path,
+                  average_rating: movie.average_rating,
+                  rating_count: movie.rating_count,
+                  tmdb_id: movie.tmdb_id,
+                  imdb_id: movie.imdb_id,
+                  overview: movie.overview
+                }}
                 onSelect={(movie) => {
                   window.location.href = `/movies/${movie.movie_id}`;
                 }}
@@ -311,42 +320,6 @@ const MoviesPage = () => {
           
           <div className="mt-8 flex justify-center">
             <div className="flex gap-2">
-             
-              {/* <Button
-                variant="outline"
-                onClick={() => {
-                  const newPage = Math.max(1, page - 1);
-                  setPage(newPage);
-                  
-                  const params = new URLSearchParams(searchParams.toString());
-                  params.set('page', newPage.toString());
-                  router.push(`/movies?${params.toString()}`);
-                }}
-                disabled={page === 1}
-              >
-                Previous
-              </Button>
-              
-              <span className="flex items-center px-4">
-                Page {page} of {totalPages}
-              </span>
-              
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const newPage = page + 1;
-                  setPage(newPage);
-                  
-                  const params = new URLSearchParams(searchParams.toString());
-                  params.set('page', newPage.toString());
-                  router.push(`/movies?${params.toString()}`);
-                }}
-                disabled={page >= totalPages}
-              >
-                Next
-              </Button>
-               */}
-
             </div>
           </div>
         </>

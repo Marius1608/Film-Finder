@@ -56,9 +56,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         raise credentials_exception
     return user
 
-# Versiune simplificată pentru testare (opțional)
+
 async def get_current_user_optional(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         return await get_current_user(token, db)
     except HTTPException:
-        return None  # Returnează None dacă user-ul nu e autentificat
+        return None

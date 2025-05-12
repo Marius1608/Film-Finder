@@ -1,28 +1,39 @@
 import os
+import openai
+import logging
 from datetime import datetime, timedelta
 from pydoc import text
 
-import openai
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, json
 from typing import List, Optional, Dict
 
 from sqlalchemy import func
+from sqlalchemy.testing import db
 from starlette import status
 
 from auth.auth import verify_password, ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, get_password_hash, \
     get_current_user
-from database.models import UserApplication, AppRating, Movie, Watchlist, Notification
+from database.models import UserApplication, AppRating, Movie, Watchlist, Notification, UserProfile
 from machine_learning.RecommendationEngine import RecommendationEngine
 from database.connection import get_db
 from sqlalchemy.orm import Session
-import logging
+from groq import Groq
+
 
 load_dotenv()
 
-openai_api_key = os.getenv("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")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
+else:
+    print("Warning: OPENAI_API_KEY not found in environment variables")
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -80,6 +91,7 @@ class MovieResponse(BaseModel):
     imdb_id: Optional[str] = None
     tmdb_id: Optional[int] = None
     overview: Optional[str] = None
+    poster_path: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -94,6 +106,7 @@ class RecommendationResponse(BaseModel):
     hybrid_score: Optional[float] = None
     average_rating: Optional[float] = None
     rating_count: Optional[int] = None
+    poster_path: Optional[str] = None
     method: str
 
     class Config:
@@ -142,6 +155,7 @@ def get_movie_details(self, movie_id: int) -> Dict:
                 'genres': result.genres,
                 'average_rating': result.avg_rating,
                 'rating_count': result.rating_count,
+                "poster_path": result.poster_path,
                 'imdb_id': result.imdb_id,
                 'tmdb_id': result.tmdb_id
             }
@@ -597,7 +611,7 @@ async def get_watchlist_recommendations(
         return []
 
     recommendations = []
-    for item in watchlist[:5]:  # Take first 5 movies from watchlist
+    for item in watchlist[:5]:
         movie_recs = engine.hybrid_recommendations(item.movie_id, 3)
         recommendations.extend(movie_recs)
 
@@ -635,7 +649,6 @@ async def ask_movie_question(
         db: Session = Depends(get_db),
         engine: RecommendationEngine = Depends(get_recommendation_engine)
 ):
-
     movie = engine.get_movie_details(request.movie_id)
     if not movie:
         raise HTTPException(status_code=404, detail="Movie not found")
@@ -646,82 +659,269 @@ async def ask_movie_question(
     Genres: {movie.get('genres', 'None specified')}
     Average Rating: {movie.get('average_rating', 'N/A')}
     Number of Ratings: {movie.get('rating_count', 0)}
+    Overview: {movie.get('overview', 'No overview available')[:300]}...
     """
 
-    if 'overview' in movie and movie['overview']:
-        movie_context += f"Overview: {movie['overview']}\n"
+    if GROQ_API_KEY:
+        try:
+            client = Groq(api_key=GROQ_API_KEY)
+
+            completion = client.chat.completions.create(
+                model="llama3-8b-8192",  # or "mixtral-8x7b-32768"
+                messages=[
+                    {
+                        "role": "system",
+                        "content": f"You are a helpful movie assistant. Answer questions about {movie['title']} based on this information: {movie_context}"
+                    },
+                    {
+                        "role": "user",
+                        "content": request.question
+                    }
+                ],
+                temperature=0.7,
+                max_tokens=200,
+            )
+
+            return ChatResponse(
+                answer=completion.choices[0].message.content,
+                source="Groq"
+            )
+
+        except Exception as e:
+            logger.error(f"Groq API error: {str(e)}")
 
     question_lower = request.question.lower()
 
-    if "plot" in question_lower or "story" in question_lower:
+    if any(word in question_lower for word in ["hello", "hi", "hey", "greetings"]):
+        return ChatResponse(
+            answer=f"Hello! I'm here to help you learn about {movie['title']}. What would you like to know? I can tell you about the plot, ratings, genres, release year, and more!",
+            source="Local"
+        )
+
+    elif any(word in question_lower for word in ["plot", "story", "about", "synopsis", "summary"]):
         if 'overview' in movie and movie['overview']:
             return ChatResponse(
-                answer=f"Here's the plot summary for {movie['title']}: {movie['overview']}",
+                answer=f"Here's what {movie['title']} is about:\n\n{movie['overview']}\n\nWould you like to know more about the genres, ratings, or similar movies?",
                 source="Database"
             )
         else:
             return ChatResponse(
-                answer=f"I don't have a detailed plot summary for {movie['title']}. Please check external sources for more information.",
+                answer=f"I don't have a detailed plot summary for {movie['title']} in my database. However, I can tell you it's a {movie.get('genres', 'movie')} from {movie.get('year', 'an unknown year')}.",
                 source="Database"
             )
-    elif "rating" in question_lower:
-        return ChatResponse(
-            answer=f"{movie['title']} has an average rating of {movie.get('average_rating', 'N/A')} based on {movie.get('rating_count', 0)} ratings.",
-            source="Database"
-        )
-    elif "genre" in question_lower:
-        return ChatResponse(
-            answer=f"{movie['title']} belongs to the following genres: {movie.get('genres', 'No genres specified')}.",
-            source="Database"
-        )
-    elif "year" in question_lower or "when" in question_lower:
-        return ChatResponse(
-            answer=f"{movie['title']} was released in {movie.get('year', 'Unknown year')}.",
-            source="Database"
-        )
 
-    if openai_api_key:
-        try:
-            openai.api_key = openai_api_key
+    elif any(word in question_lower for word in ["rating", "score", "good", "reviews", "popular"]):
+        if movie.get('average_rating'):
+            rating = movie['average_rating']
+            count = movie.get('rating_count', 0)
 
-            system_prompt = f"""
-            You are a helpful AI assistant that provides information about movies.
-            You're currently discussing the movie: {movie['title']}.
-
-            Here are the details about this movie:
-            {movie_context}
-
-            Answer questions about this movie based on these details.
-            If the question cannot be answered with the provided information, politely say so and suggest what information might be available.
-            Keep your answers concise, friendly, and informative.
-            """
-
-            logger.info(f"Sending request to OpenAI for movie {movie['title']}, question: {request.question}")
-
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": request.question}
-                ],
-                temperature=0.7,
-                max_tokens=300
-            )
-
-            answer = response.choices[0].message.content
+            if rating >= 4.5:
+                quality = "Outstanding! One of the highest-rated movies"
+            elif rating >= 4.0:
+                quality = "Excellent! Highly recommended by viewers"
+            elif rating >= 3.5:
+                quality = "Very good! Well-liked by most viewers"
+            elif rating >= 3.0:
+                quality = "Good! Solid entertainment value"
+            elif rating >= 2.5:
+                quality = "Average. Has its moments but mixed reviews"
+            else:
+                quality = "Below average. Not highly recommended"
 
             return ChatResponse(
-                answer=answer,
-                source="OpenAI"
+                answer=f"{movie['title']} has a {rating:.1f}/5 star rating from {count:,} users. {quality}.",
+                source="Database"
+            )
+        else:
+            return ChatResponse(
+                answer=f"I don't have rating information for {movie['title']} yet. It might be a newer release or less commonly rated film.",
+                source="Database"
             )
 
-        except Exception as e:
-            logger.error(f"Error with OpenAI: {str(e)}")
+    elif any(word in question_lower for word in ["genre", "type", "kind", "category"]):
+        if movie.get('genres'):
+            genres = movie['genres']
+            return ChatResponse(
+                answer=f"{movie['title']} is categorized as: {genres}. These genres help you understand what kind of movie experience to expect.",
+                source="Database"
+            )
+        else:
+            return ChatResponse(
+                answer=f"I don't have genre information for {movie['title']} in my database.",
+                source="Database"
+            )
 
-    return ChatResponse(
-        answer=f"I can provide information about {movie['title']}'s rating, genres, release year, and other basic details. What would you like to know?",
-        source="Fallback"
-    )
+    # Year/Release date responses
+    elif any(word in question_lower for word in ["year", "when", "released", "old", "date"]):
+        if movie.get('year'):
+            year = movie['year']
+            current_year = 2025
+            age = current_year - year
+
+            if age <= 1:
+                age_context = "It's a very recent release!"
+            elif age <= 5:
+                age_context = "It's a relatively recent movie."
+            elif age <= 10:
+                age_context = "It's from the past decade."
+            elif age <= 20:
+                age_context = "It's a modern classic."
+            else:
+                age_context = "It's a classic film."
+
+            return ChatResponse(
+                answer=f"{movie['title']} was released in {year}, making it {age} years old. {age_context}",
+                source="Database"
+            )
+        else:
+            return ChatResponse(
+                answer=f"I don't have the release year for {movie['title']} in my database.",
+                source="Database"
+            )
+
+    elif any(word in question_lower for word in ["watch", "similar", "recommend", "like"]):
+        try:
+            similar_movies = engine.hybrid_recommendations(movie['id'], limit=3)
+            if similar_movies:
+                titles = [m['title'] for m in similar_movies[:3]]
+                return ChatResponse(
+                    answer=f"If you enjoyed {movie['title']}, you might also like: {', '.join(titles)}. These movies share similar themes, genres, or have been enjoyed by viewers with similar tastes.",
+                    source="Recommendations"
+                )
+        except:
+            pass
+
+        return ChatResponse(
+            answer=f"Check out the recommendations section below for movies similar to {movie['title']}!",
+            source="Database"
+        )
+
+    # Cast/Crew responses
+    elif any(word in question_lower for word in ["director", "cast", "actor", "actress", "star"]):
+        return ChatResponse(
+            answer=f"I don't have cast or crew information for {movie['title']} in my current database. You can find this information on IMDB or other movie databases.",
+            source="Database"
+        )
+
+    elif any(word in question_lower for word in ["review", "opinion", "thoughts", "think"]):
+        if movie.get('average_rating'):
+            rating = movie['average_rating']
+            count = movie.get('rating_count', 0)
+
+            if rating >= 4.0:
+                opinion = f"Users love {movie['title']}! With a {rating:.1f} rating from {count} reviews, it's highly recommended."
+            elif rating >= 3.5:
+                opinion = f"Users really enjoy {movie['title']}. With a {rating:.1f} rating from {count} reviews, it's well-received."
+            elif rating >= 3.0:
+                opinion = f"{movie['title']} has mixed to positive reviews. With a {rating:.1f} rating from {count} users, it's worth checking out if you like {movie.get('genres', 'this type of movie')}."
+            else:
+                opinion = f"{movie['title']} has mixed reviews with a {rating:.1f} rating from {count} users. It might appeal to specific tastes."
+
+            return ChatResponse(
+                answer=opinion,
+                source="Database"
+            )
+        else:
+            return ChatResponse(
+                answer=f"I don't have user reviews for {movie['title']} yet. Be one of the first to rate it!",
+                source="Database"
+            )
+
+    elif any(word in question_lower for word in ["long", "duration", "runtime", "minutes", "hours"]):
+        if movie.get('runtime'):
+            runtime = movie['runtime']
+            hours = runtime // 60
+            minutes = runtime % 60
+
+            if hours > 0:
+                duration_str = f"{hours} hour{'s' if hours > 1 else ''} and {minutes} minutes"
+            else:
+                duration_str = f"{minutes} minutes"
+
+            return ChatResponse(
+                answer=f"{movie['title']} has a runtime of {duration_str}.",
+                source="Database"
+            )
+        else:
+            return ChatResponse(
+                answer=f"I don't have runtime information for {movie['title']} in my database.",
+                source="Database"
+            )
+
+    elif any(word in question_lower for word in
+             ["where", "stream", "watch", "available", "netflix", "amazon", "disney"]):
+        return ChatResponse(
+            answer=f"I don't have streaming availability information for {movie['title']}. You can check JustWatch, Reelgood, or the streaming services directly to see where it's currently available.",
+            source="Database"
+        )
+
+    else:
+        info_parts = [f"Here's what I know about {movie['title']}:"]
+
+        if movie.get('year'):
+            info_parts.append(f"• Released: {movie['year']}")
+        if movie.get('genres'):
+            info_parts.append(f"• Genres: {movie['genres']}")
+        if movie.get('average_rating'):
+            info_parts.append(f"• Rating: {movie['average_rating']:.1f}/5 ({movie.get('rating_count', 0)} ratings)")
+        if movie.get('overview'):
+            info_parts.append(f"• Plot: {movie['overview'][:200]}{'...' if len(movie['overview']) > 200 else ''}")
+
+        info_parts.append("\nWhat specific information would you like to know?")
+
+        return ChatResponse(
+            answer="\n".join(info_parts),
+            source="Database"
+        )
+
+@app.get("/api/status")
+async def get_api_status():
+
+    status = {
+        "openai": {
+            "configured": bool(OPENAI_API_KEY),
+            "key_length": len(OPENAI_API_KEY) if OPENAI_API_KEY else 0,
+            "status": "unknown"
+        },
+        "groq": {
+            "configured": bool(GROQ_API_KEY),
+            "key_length": len(GROQ_API_KEY) if GROQ_API_KEY else 0,
+            "status": "unknown"
+        }
+    }
+
+    if OPENAI_API_KEY:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1
+            )
+            status["openai"]["status"] = "active"
+        except Exception as e:
+            if "insufficient_quota" in str(e):
+                status["openai"]["status"] = "quota_exceeded"
+            else:
+                status["openai"]["status"] = f"error: {str(e)[:50]}"
+
+    if GROQ_API_KEY:
+        try:
+            from groq import Groq
+            client = Groq(api_key=GROQ_API_KEY)
+            response = client.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1
+            )
+            status["groq"]["status"] = "active"
+        except Exception as e:
+            status["groq"]["status"] = f"error: {str(e)[:50]}"
+
+    return status
+
+
 
 @app.get("/movies/all", response_model=List[MovieResponse], tags=["Movies"])
 async def get_all_movies(
@@ -804,7 +1004,6 @@ async def get_user_rating(
         Rating.movie_id == movie_id
     ).first()
 
-    # Also check app_ratings table
     app_rating = db.query(AppRating).filter(
         AppRating.user_app_id == user_id,
         AppRating.movie_id == movie_id
@@ -831,6 +1030,369 @@ async def get_user_rating(
             "rating": None,
             "timestamp": None
         }
+
+
+@app.post("/notifications", tags=["Notifications"])
+async def create_notification(
+        title: str,
+        message: str,
+        type: str = "info",
+        metadata: str = None,
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    notification = Notification(
+        user_id=current_user.id,
+        title=title,
+        message=message,
+        type=type,
+        metadata=metadata
+    )
+
+    db.add(notification)
+    db.commit()
+    db.refresh(notification)
+    return {"message": "Notification created", "id": notification.id}
+
+
+@app.post("/notifications", tags=["Notifications"])
+async def create_notification(
+        title: str,
+        message: str,
+        type: str = "info",
+        metadata: str = None,
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    notification = Notification(
+        user_id=current_user.id,
+        title=title,
+        message=message,
+        type=type,
+        notification_metadata=metadata
+    )
+
+    db.add(notification)
+    db.commit()
+    db.refresh(notification)
+    return {"message": "Notification created", "id": notification.id}
+
+
+@app.get("/notifications", tags=["Notifications"])
+async def get_notifications(
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    notifications = db.query(Notification).filter(
+        Notification.user_id == current_user.id
+    ).order_by(Notification.created_at.desc()).all()
+
+    result = []
+    for notification in notifications:
+        result.append({
+            "id": notification.id,
+            "title": notification.title,
+            "message": notification.message,
+            "type": notification.type,
+            "read": notification.read,
+            "created_at": notification.created_at,
+            "metadata": notification.notification_metadata
+        })
+
+    return result
+
+
+@app.get("/notifications/check-daily", tags=["Notifications"])
+async def check_daily_notifications(
+        date: str,
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    today_start = datetime.strptime(date, "%Y-%m-%d")
+    today_end = today_start + timedelta(days=1)
+
+    existing = db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.created_at >= today_start,
+        Notification.created_at < today_end,
+        Notification.notification_metadata.like('%"type":"daily_recommendations"%')
+    ).first()
+
+    return {"sent": existing is not None}
+
+
+@app.post("/users/recommendations/daily", tags=["Recommendations"])
+async def get_daily_recommendations(
+        seed: str,
+        limit: int = 3,
+        current_user: UserApplication = Depends(get_current_user),
+        engine: RecommendationEngine = Depends(get_recommendation_engine)
+):
+
+    recommendations = []
+
+    personal_recs = engine.personalized_recommendations(current_user.id, limit)
+    if personal_recs:
+        recommendations.extend(personal_recs[:1])
+
+    if len(recommendations) < limit:
+        popular_recs = engine.get_popular_movies(limit * 2)
+        popular_recs = [r for r in popular_recs if not any(rec['movie_id'] == r['movie_id'] for rec in recommendations)]
+        recommendations.extend(popular_recs[:limit - len(recommendations)])
+
+    if len(recommendations) < limit:
+
+        user_profile = await get_user_profile(current_user.id, db)
+        if user_profile and user_profile.get('favorite_genres'):
+            genres = list(user_profile['favorite_genres'].keys())[:2]  # Top 2 genuri
+            for genre in genres:
+                if len(recommendations) >= limit:
+                    break
+
+                genre_recs = await search_by_genre(genre, limit * 2, engine)
+                genre_recs = [r for r in genre_recs if
+                              not any(rec['movie_id'] == r['movie_id'] for rec in recommendations)]
+                recommendations.extend(genre_recs[:1])
+
+    return recommendations[:limit]
+
+
+async def get_user_profile(user_id: int, db: Session):
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if profile and profile.favorite_genres:
+        try:
+            return {
+                'favorite_genres': json.loads(profile.favorite_genres),
+                'avg_rating': profile.avg_rating,
+                'rating_count': profile.rating_count
+            }
+        except:
+            pass
+    return None
+
+
+async def search_by_genre(genre: str, limit: int, engine: RecommendationEngine):
+    try:
+        return engine.search_movies(genre, limit)
+    except:
+        return []
+
+
+@app.get("/notifications/scheduled", tags=["Notifications"])
+async def check_and_generate_scheduled_notifications(
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db),
+        engine: RecommendationEngine = Depends(get_recommendation_engine)
+):
+    try:
+        last_notification = db.query(Notification) \
+            .filter(Notification.user_id == current_user.id) \
+            .order_by(Notification.created_at.desc()) \
+            .first()
+
+        should_generate = True
+        if last_notification:
+            now = datetime.utcnow()
+            last_notification_time = last_notification.created_at
+            time_diff = now - last_notification_time
+
+            if time_diff.total_seconds() < 30 * 60:
+                should_generate = False
+
+        if should_generate:
+            recommendations = engine.personalized_recommendations(current_user.id, 3)
+
+            if not recommendations:
+                recommendations = engine.get_popular_movies(3)
+
+            metadata = {
+                "type": "daily_recommendations",
+                "movies": [
+                    {"id": rec["movie_id"], "title": rec["title"]}
+                    for rec in recommendations[:3]
+                ]
+            }
+
+            notification = Notification(
+                user_id=current_user.id,
+                title="New Movie Recommendations",
+                message="We've found some movies you might enjoy!",
+                type="info",
+                notification_metadata=json.dumps(metadata)
+            )
+
+            db.add(notification)
+            db.commit()
+            db.refresh(notification)
+
+            return {"success": True, "notification_generated": True, "notification_id": notification.id}
+
+        return {"success": True, "notification_generated": False, "message": "Too soon for a new notification"}
+
+    except Exception as e:
+        logger.error(f"Error checking/generating scheduled notifications: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process scheduled notifications: {str(e)}")
+
+
+@app.get("/test-notification", tags=["Notifications"])
+async def create_test_notification(
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    try:
+        engine = RecommendationEngine()
+        recommendations = engine.get_popular_movies(3)
+
+        metadata = {
+            "type": "test_recommendations",
+            "movies": [
+                {"id": rec["movie_id"], "title": rec["title"]}
+                for rec in recommendations[:3]
+            ]
+        }
+
+        notification = Notification(
+            user_id=current_user.id,
+            title="Film Recommendations",
+            message="Here are some movie recommendations for you!",
+            type="info",
+            notification_metadata=json.dumps(metadata)
+        )
+
+        db.add(notification)
+        db.commit()
+        db.refresh(notification)
+
+        return {"success": True, "notification_id": notification.id}
+    except Exception as e:
+        logger.error(f"Error creating test notification: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create notification: {str(e)}")
+
+
+@router.delete("/notifications/{notification_id}", tags=["Notifications"])
+async def delete_notification(
+        notification_id: int,
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+
+    notification = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.user_id == current_user.id
+    ).first()
+
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+    db.delete(notification)
+    db.commit()
+
+    return {"message": "Notification deleted successfully"}
+
+
+@router.delete("/notifications", tags=["Notifications"])
+async def delete_all_notifications(
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    notifications = db.query(Notification).filter(
+        Notification.user_id == current_user.id
+    ).all()
+
+    count = len(notifications)
+
+    for notification in notifications:
+        db.delete(notification)
+
+    db.commit()
+
+    return {"message": f"{count} notifications deleted successfully"}
+
+
+@router.delete("/notifications/read", tags=["Notifications"])
+async def delete_read_notifications(
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    read_notifications = db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.read == True
+    ).all()
+
+    count = len(read_notifications)
+
+    for notification in read_notifications:
+        db.delete(notification)
+
+    db.commit()
+
+    return {"message": f"{count} read notifications deleted successfully"}
+
+
+@app.delete("/notifications/{notification_id}", tags=["Notifications"])
+async def delete_notification(
+        notification_id: int,
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    notification = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.user_id == current_user.id
+    ).first()
+
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+    db.delete(notification)
+    db.commit()
+
+    return {"message": "Notification deleted successfully"}
+
+
+@app.delete("/notifications", tags=["Notifications"])
+async def delete_all_notifications(
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+
+    result = db.query(Notification).filter(
+        Notification.user_id == current_user.id
+    ).delete(synchronize_session=False)
+
+    db.commit()
+
+    return {"message": f"{result} notifications deleted successfully"}
+
+
+@app.delete("/notifications/read", tags=["Notifications"])
+async def delete_read_notifications(
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    result = db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.read == True
+    ).delete(synchronize_session=False)
+
+    db.commit()
+
+    return {"message": f"{result} read notifications deleted successfully"}
+
+
+@app.post("/notifications/mark-all-read", tags=["Notifications"])
+async def mark_all_notifications_read(
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    result = db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.read == False
+    ).update({"read": True}, synchronize_session=False)
+
+    db.commit()
+
+    return {"message": f"{result} notifications marked as read"}
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -28,6 +28,17 @@ export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    if (movie) {
+      console.log('Movie data received:', {
+        title: movie.title,
+        poster_path: movie.poster_path,
+        tmdb_id: movie.tmdb_id,
+        fullMovie: movie
+      });
+    }
+  }, [movie]);
+
+  useEffect(() => {
     if (user && movie) {
       fetchUserRating();
       checkWatchlistStatus();
@@ -77,10 +88,12 @@ export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
     setIsSubmitting(true);
     
     try {
-      await axios.post(`/ratings`, {
+     await axios.post(`/ratings`, null, {
+      params: {
         movie_id: movieId,
         rating: rating
-      });
+      }
+    });
       
       setUserRating(rating);
       toast.success('Rating saved successfully');
@@ -145,10 +158,17 @@ export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
     );
   }
 
-  const hasValidPoster = movie.poster_path && movie.poster_path.length > 0;
+  const hasValidPoster = movie.poster_path && movie.poster_path.length > 0 && movie.poster_path !== 'null' && movie.poster_path !== 'None';
   const posterUrl = hasValidPoster 
     ? `${process.env.NEXT_PUBLIC_TMDB_IMAGE_BASE_URL}${movie.poster_path}`
     : '';
+  
+  console.log('Poster debug:', {
+    poster_path: movie.poster_path,
+    hasValidPoster,
+    posterUrl,
+    env_url: process.env.NEXT_PUBLIC_TMDB_IMAGE_BASE_URL
+  });
 
   return (
     <main className="container mx-auto px-4 py-8">
@@ -165,7 +185,10 @@ export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
               fill
               sizes="(max-width: 768px) 100vw, 300px"
               className="object-cover"
-              onError={() => setImageError(true)}
+              onError={() => {
+                console.error('Image failed to load:', posterUrl);
+                setImageError(true);
+              }}
               priority
             />
           )}
@@ -213,7 +236,6 @@ export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
               >
                 {isInWatchlist ? <BookmarkIcon className="fill-current" /> : <Plus />}
                 {isInWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
-                {isSubmitting && <span className="ml-2 h-4 w-4 animate-spin rounded-full border-2 border-b-transparent"></span>}
               </Button>
             )}
             <Button 
@@ -234,7 +256,6 @@ export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
                 onRatingChange={handleRating}
                 readonly={isSubmitting}
               />
-              {isSubmitting && <span className="ml-2 text-xs text-gray-500">Saving rating...</span>}
             </div>
           )}
 
@@ -254,23 +275,6 @@ export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
           <h2 className="text-2xl font-semibold mb-6">Recommended for You</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
             {recommendations.slice(0, 5).map((movie) => (
-              <MovieCard
-                key={movie.movie_id}
-                movie={movie}
-                onSelect={(movie) => {
-                  window.location.href = `/movies/${movie.movie_id}`;
-                }}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {recommendations && recommendations.length > 5 && (
-        <section className="mb-12">
-          <h2 className="text-2xl font-semibold mb-6">Similar Movies</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-            {recommendations.slice(5, 10).map((movie) => (
               <MovieCard
                 key={movie.movie_id}
                 movie={movie}

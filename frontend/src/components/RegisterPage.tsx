@@ -30,8 +30,12 @@ export default function RegisterPage() {
         baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
       });
       router.push('/login');
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Registration failed');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError(err.response?.data?.detail || 'Registration failed');
+      } else {
+        setError('Registration failed');
+      }
     } finally {
       setIsLoading(false);
     }

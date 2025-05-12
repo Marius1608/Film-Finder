@@ -1,3 +1,4 @@
+
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
@@ -19,7 +20,9 @@ class RecommendationEngine:
     def get_movie_details(self, movie_id: int) -> Dict:
         try:
             query = text("""
-                SELECT m.*, ms.avg_rating, ms.rating_count
+                SELECT m.id, m.title, m.year, m.genres, m.poster_path, 
+                       m.overview, m.tmdb_id, m.imdb_id,
+                       ms.avg_rating, ms.rating_count
                 FROM movies m
                 LEFT JOIN movie_stats ms ON m.id = ms.movie_id
                 WHERE m.id = :movie_id
@@ -32,6 +35,8 @@ class RecommendationEngine:
                     'title': result.title,
                     'year': result.year,
                     'genres': result.genres,
+                    'poster_path': result.poster_path,  # Include this
+                    'overview': result.overview,
                     'average_rating': result.avg_rating,
                     'rating_count': result.rating_count,
                     'imdb_id': result.imdb_id,
@@ -40,14 +45,15 @@ class RecommendationEngine:
             return None
 
         except Exception as e:
-            logger.error(f"Eroare la obținerea detaliilor filmului: {e}")
+            logger.error(f"Error getting movie details: {e}")
             return None
 
     def collaborative_filtering_recommendations(self, movie_id: int, limit: int = 10) -> List[Dict]:
         try:
             query = text("""
                 SELECT ms.movie_id2 as similar_movie_id, ms.similarity_score,
-                       m.title, m.year, m.genres, mst.avg_rating, mst.rating_count
+                       m.title, m.year, m.genres, m.poster_path, m.tmdb_id, m.imdb_id,
+                       mst.avg_rating, mst.rating_count
                 FROM movie_similarity ms
                 JOIN movies m ON ms.movie_id2 = m.id
                 LEFT JOIN movie_stats mst ON m.id = mst.movie_id
@@ -65,6 +71,9 @@ class RecommendationEngine:
                     'title': row.title,
                     'year': row.year,
                     'genres': row.genres,
+                    'poster_path': row.poster_path,  # Include this
+                    'tmdb_id': row.tmdb_id,
+                    'imdb_id': row.imdb_id,
                     'similarity_score': row.similarity_score,
                     'average_rating': row.avg_rating,
                     'rating_count': row.rating_count,
@@ -74,14 +83,15 @@ class RecommendationEngine:
             return recommendations
 
         except Exception as e:
-            logger.error(f"Eroare la recomandări collaborative filtering: {e}")
+            logger.error(f"Error in collaborative filtering: {e}")
             return []
 
     def content_based_recommendations(self, movie_id: int, limit: int = 10) -> List[Dict]:
         try:
             query = text("""
                 SELECT ms.movie_id2 as similar_movie_id, ms.similarity_score,
-                       m.title, m.year, m.genres, mst.avg_rating, mst.rating_count
+                       m.title, m.year, m.genres, m.poster_path, m.tmdb_id, m.imdb_id,
+                       mst.avg_rating, mst.rating_count
                 FROM movie_similarity ms
                 JOIN movies m ON ms.movie_id2 = m.id
                 LEFT JOIN movie_stats mst ON m.id = mst.movie_id
@@ -99,6 +109,9 @@ class RecommendationEngine:
                     'title': row.title,
                     'year': row.year,
                     'genres': row.genres,
+                    'poster_path': row.poster_path,  # Include this
+                    'tmdb_id': row.tmdb_id,
+                    'imdb_id': row.imdb_id,
                     'similarity_score': row.similarity_score,
                     'average_rating': row.avg_rating,
                     'rating_count': row.rating_count,
@@ -108,7 +121,7 @@ class RecommendationEngine:
             return recommendations
 
         except Exception as e:
-            logger.error(f"Eroare la recomandări content-based: {e}")
+            logger.error(f"Error in content-based recommendations: {e}")
             return []
 
     def hybrid_recommendations(self, movie_id: int, limit: int = 10,
@@ -116,7 +129,6 @@ class RecommendationEngine:
                                content_weight: float = 0.4) -> List[Dict]:
         try:
             cf_recs = self.collaborative_filtering_recommendations(movie_id, limit * 2)
-
             cb_recs = self.content_based_recommendations(movie_id, limit * 2)
 
             movie_scores = {}
@@ -141,14 +153,12 @@ class RecommendationEngine:
                         'details': rec
                     }
 
-            # Sortează după scorul hibrid
             sorted_movies = sorted(
                 movie_scores.items(),
                 key=lambda x: x[1]['hybrid_score'],
                 reverse=True
             )[:limit]
 
-            # Formează lista de recomandări
             recommendations = []
             for movie_id, scores in sorted_movies:
                 rec = scores['details']
@@ -159,7 +169,7 @@ class RecommendationEngine:
             return recommendations
 
         except Exception as e:
-            logger.error(f"Eroare la recomandări hibride: {e}")
+            logger.error(f"Error in hybrid recommendations: {e}")
             return []
 
     def personalized_recommendations(self, user_id: int, limit: int = 10) -> List[Dict]:
@@ -205,17 +215,18 @@ class RecommendationEngine:
             return recommendations[:limit]
 
         except Exception as e:
-            logger.error(f"Eroare la recomandări personalizate: {e}")
+            logger.error(f"Error in personalized recommendations: {e}")
             return []
 
     def get_popular_movies(self, limit: int = 10) -> List[Dict]:
         try:
             query = text("""
                 SELECT m.id as movie_id, m.title, m.year, m.genres,
+                       m.poster_path, m.tmdb_id, m.imdb_id, m.overview,
                        ms.avg_rating, ms.rating_count,
                        (ms.avg_rating * LOG(ms.rating_count + 1)) as popularity_score
                 FROM movies m
-                JOIN movie_stats ms ON m.id = ms.movie_id
+                LEFT JOIN movie_stats ms ON m.id = ms.movie_id
                 WHERE ms.rating_count > 10
                 ORDER BY popularity_score DESC
                 LIMIT :limit
@@ -230,6 +241,10 @@ class RecommendationEngine:
                     'title': row.title,
                     'year': row.year,
                     'genres': row.genres,
+                    'poster_path': row.poster_path,  # Include this
+                    'tmdb_id': row.tmdb_id,
+                    'imdb_id': row.imdb_id,
+                    'overview': row.overview,
                     'average_rating': row.avg_rating,
                     'rating_count': row.rating_count,
                     'popularity_score': row.popularity_score,
@@ -239,7 +254,7 @@ class RecommendationEngine:
             return recommendations
 
         except Exception as e:
-            logger.error(f"Eroare la obținerea filmelor populare: {e}")
+            logger.error(f"Error getting popular movies: {e}")
             return []
 
     def search_movies(self, query: str, limit: int = 10) -> List[Dict]:
@@ -247,6 +262,7 @@ class RecommendationEngine:
             search_pattern = f"%{query}%"
             sql_query = text("""
                 SELECT m.id as movie_id, m.title, m.year, m.genres,
+                       m.poster_path, m.tmdb_id, m.imdb_id, m.overview,
                        ms.avg_rating, ms.rating_count
                 FROM movies m
                 LEFT JOIN movie_stats ms ON m.id = ms.movie_id
@@ -269,6 +285,10 @@ class RecommendationEngine:
                     'title': row.title,
                     'year': row.year,
                     'genres': row.genres,
+                    'poster_path': row.poster_path,
+                    'tmdb_id': row.tmdb_id,
+                    'imdb_id': row.imdb_id,
+                    'overview': row.overview,
                     'average_rating': row.avg_rating,
                     'rating_count': row.rating_count
                 })
@@ -276,7 +296,7 @@ class RecommendationEngine:
             return search_results
 
         except Exception as e:
-            logger.error(f"Eroare la căutare filme: {e}")
+            logger.error(f"Error searching movies: {e}")
             return []
 
     def close(self):

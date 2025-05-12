@@ -36,7 +36,18 @@ export default function Home() {
           {popularMovies?.map((movie) => (
             <MovieCard 
               key={movie.movie_id} 
-              movie={movie}
+              movie={{
+                movie_id: movie.movie_id,
+                title: movie.title,
+                year: movie.year,
+                genres: movie.genres,
+                poster_path: movie.poster_path,
+                average_rating: movie.average_rating,
+                rating_count: movie.rating_count,
+                tmdb_id: movie.tmdb_id,
+                imdb_id: movie.imdb_id,
+                overview: movie.overview
+              }}
               onSelect={(movie) => {
                 window.location.href = `/movies/${movie.movie_id}`;
               }}

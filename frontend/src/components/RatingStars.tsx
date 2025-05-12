@@ -32,7 +32,6 @@ const RatingStars = ({
   const [hoverRating, setHoverRating] = useState(0);
   const [displayRating, setDisplayRating] = useState(rating);
 
-  // Update internal state when prop changes
   useEffect(() => {
     setDisplayRating(rating);
   }, [rating]);

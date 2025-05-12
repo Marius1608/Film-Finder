@@ -56,10 +56,8 @@ export const useRateMovie = () => {
       rating: number 
     }) => movieApi.addRating(userId, movieId, rating),
     onSuccess: (_, variables) => {
-      // Invalidăm cache-ul pentru rating-urile utilizatorului
       queryClient.invalidateQueries({ queryKey: ['user-ratings', variables.userId] });
       queryClient.invalidateQueries({ queryKey: ['movie', variables.movieId] });
-      // Invalidăm și recomandările personalizate
       queryClient.invalidateQueries({ queryKey: ['personalized-recommendations', variables.userId] });
     },
   });

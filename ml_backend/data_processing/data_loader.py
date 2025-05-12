@@ -77,7 +77,6 @@ class DataLoader:
                         self.session.add(movie)
                         total_saved += 1
 
-                # Commit după fiecare batch
                 self.session.commit()
                 print(f"Salvate {min(i + batch_size, len(movies_list))} din {len(movies_list)} filme")
 

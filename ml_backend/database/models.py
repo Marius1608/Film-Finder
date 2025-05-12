@@ -167,6 +167,22 @@ class Notification(Base):
     message = Column(Text, nullable=False)
     type = Column(Enum('info', 'success', 'warning', 'error'), default='info')
     read = Column(Boolean, default=False)
+    notification_metadata = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     user = relationship("UserApplication", backref="notifications")
+
+
+class UserProfile(Base):
+    __tablename__ = 'user_profiles'
+
+    user_id = Column(Integer, ForeignKey('users_application.id'), primary_key=True)
+    favorite_genres = Column(Text)  # Stocat ca JSON
+    avg_rating = Column(Float)
+    rating_count = Column(Integer)
+    rating_variance = Column(Float)
+    last_updated = Column(DateTime, default=datetime.datetime.utcnow)
+
+    user = relationship("UserApplication", backref="profile", uselist=False)
+
+

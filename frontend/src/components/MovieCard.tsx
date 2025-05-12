@@ -2,6 +2,7 @@ import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Star, Calendar, Film } from 'lucide-react';
 import Image from 'next/image';
 import type { Movie } from '@/types/movie';
+import { useEffect } from 'react';
 
 interface MovieCardProps {
   movie: Movie;
@@ -9,15 +10,31 @@ interface MovieCardProps {
 }
 
 const MovieCard = ({ movie, onSelect }: MovieCardProps) => {
+  useEffect(() => {
+    console.log('MovieCard received movie:', {
+      title: movie.title,
+      poster_path: movie.poster_path,
+      tmdb_id: movie.tmdb_id,
+      fullMovie: movie
+    });
+  }, [movie]);
   
   const tmdbId = movie.tmdb_id || null;
-  const hasPosterPath = movie.poster_path && movie.poster_path !== 'null' && movie.poster_path !== 'None';
+  const posterPath = movie.poster_path;
+  const hasPosterPath = posterPath && posterPath !== 'null' && posterPath !== 'None' && posterPath.length > 0;
+  
   const imageUrl = hasPosterPath 
-    ? `https://image.tmdb.org/t/p/w500${movie.poster_path.startsWith('/') ? movie.poster_path : `/${movie.poster_path}`}`
+    ? (posterPath.startsWith('http') 
+        ? posterPath 
+        : `https://image.tmdb.org/t/p/w500${posterPath.startsWith('/') ? posterPath : `/${posterPath}`}`)
     : null;
   
+  if (movie.title) {
+    console.log(`Movie "${movie.title}" poster URL:`, imageUrl);
+  }
+  
   const fallbackUrl = tmdbId 
-    ? `https://www.themoviedb.org/t/p/w500/https://www.themoviedb.org/t/p/w500/https://media.themoviedb.org/t/p/w500/t/p/w500/film/${tmdbId}`
+    ? `https://www.themoviedb.org/t/p/w500/film/${tmdbId}`
     : null;
 
   const generateColorFromTitle = (title: string) => {
@@ -46,6 +63,7 @@ const MovieCard = ({ movie, onSelect }: MovieCardProps) => {
               className="object-cover rounded-t-lg"
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               onError={(e) => {
+                console.error(`Failed to load image for "${movie.title}":`, imageUrl);
                 const target = e.target as HTMLImageElement;
                 target.style.display = 'none';
                 

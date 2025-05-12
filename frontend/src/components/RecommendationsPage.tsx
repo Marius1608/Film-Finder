@@ -1,22 +1,60 @@
 'use client';
 
-import { usePersonalizedRecommendations } from '@/hooks/useMovies';
+import { useState } from 'react';
 import MovieCard from '@/components/MovieCard';
 import { Loader2, Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent} from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useState } from 'react';
+import axios from 'axios';
+import { useQuery } from '@tanstack/react-query';
+import type { MovieRecommendation } from '@/types/movie';
 
 export default function RecommendationsPage() {
   const { user } = useAuth();
   const [method, setMethod] = useState('hybrid');
   const [limit, setLimit] = useState(20);
   
-  const { data: recommendations, isLoading, error } = usePersonalizedRecommendations(
-    user?.id,
-    limit
-  );
+  const { data: recommendations, isLoading, error } = useQuery<MovieRecommendation[]>({
+    queryKey: ['recommendations', user?.id, method, limit],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      
+      if (method === 'personalized') {
+        const { data } = await axios.post(`/users/${user.id}/recommendations`, { limit });
+        return data;
+      } else {
+        const ratingsResponse = await axios.get('/my-ratings');
+        const userRatings = ratingsResponse.data;
+        
+        if (userRatings.length > 0) {
+          type UserRating = { movie_id: number; rating: number };
+          const highlyRatedMovie = (userRatings as UserRating[]).sort((a, b) => b.rating - a.rating)[0];
+          const { data } = await axios.post(`/movies/${highlyRatedMovie.movie_id}/recommendations`, {
+            method,
+            limit
+          });
+          return data;
+        } else {
+          const popularResponse = await axios.get('/movies/popular?limit=1');
+          const popularMovie = popularResponse.data[0];
+          if (popularMovie) {
+            const { data } = await axios.post(`/movies/${popularMovie.movie_id}/recommendations`, {
+              method,
+              limit
+            });
+            return data;
+          }
+        }
+      }
+      return [];
+    },
+    enabled: !!user,
+  });
+
+  const uniqueRecommendations = recommendations ? 
+    Array.from(new Map(recommendations.map(movie => [movie.movie_id, movie])).values()) 
+    : [];
 
   if (!user) {
     return (
@@ -63,8 +101,8 @@ export default function RecommendationsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="hybrid">Hybrid</SelectItem>
-            <SelectItem value="collaborative">Collaborative</SelectItem>
-            <SelectItem value="content_based">Content-based</SelectItem>
+            <SelectItem value="collaborative">Collaborative Filtering</SelectItem>
+            <SelectItem value="personalized">Personalized</SelectItem>
           </SelectContent>
         </Select>
         
@@ -75,29 +113,38 @@ export default function RecommendationsPage() {
           <SelectContent>
             <SelectItem value="10">Show 10</SelectItem>
             <SelectItem value="20">Show 20</SelectItem>
-            <SelectItem value="50">Show 50</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
-      {recommendations && recommendations.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          {recommendations.map((movie) => (
-            <div key={movie.movie_id} className="relative">
-              <MovieCard
-                movie={movie}
-                onSelect={(movie) => {
-                  window.location.href = `/movies/${movie.movie_id}`;
-                }}
-              />
-              {movie.similarity_score && (
-                <div className="absolute top-2 right-2 bg-primary text-primary-foreground px-2 py-1 rounded-md text-xs">
-                  {(movie.similarity_score * 100).toFixed(0)}% match
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+      {uniqueRecommendations && uniqueRecommendations.length > 0 ? (
+        <>
+          <div className="mb-4 text-sm text-gray-600">
+            Showing {uniqueRecommendations.length} recommendations using {method.replace('_', ' ')} method
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+            {uniqueRecommendations.map((movie, index) => (
+              <div key={`${movie.movie_id}-${index}`} className="relative">
+                <MovieCard
+                  movie={movie}
+                  onSelect={(movie) => {
+                    window.location.href = `/movies/${movie.movie_id}`;
+                  }}
+                />
+                {movie.similarity_score && (
+                  <div className="absolute top-2 right-2 bg-primary text-primary-foreground px-2 py-1 rounded-md text-xs">
+                    {(movie.similarity_score * 100).toFixed(0)}% match
+                  </div>
+                )}
+                {movie.method && (
+                  <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-xs">
+                    {movie.method}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       ) : (
         <Card>
           <CardContent className="pt-6">

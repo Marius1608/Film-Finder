@@ -20,12 +20,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Configurează axios global cu interceptori
 const setupAxiosInterceptors = (token: string | null) => {
-  // Setează baseURL global
+  
   axios.defaults.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
-  // Interceptor pentru request (adaugă token la header)
   axios.interceptors.request.use(
     (config) => {
       if (token) {
@@ -36,12 +33,10 @@ const setupAxiosInterceptors = (token: string | null) => {
     (error) => Promise.reject(error)
   );
 
-  // Interceptor pentru response (gestionează token-ul expirat)
   axios.interceptors.response.use(
     (response) => response,
     (error) => {
       if (error.response?.status === 401) {
-        // Token expirat, delogheaza utilizatorul
         localStorage.removeItem('token');
         window.location.href = '/login';
       }
@@ -73,7 +68,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      // Login fără token (nu a fost setat încă)
       const response = await axios.post('/auth/token', {
         email,
         password
@@ -83,11 +77,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       const { access_token } = response.data;
       localStorage.setItem('token', access_token);
-      
-      // Configurează axios cu noul token
       setupAxiosInterceptors(access_token);
       
-      // Obține informații utilizator
       const userResponse = await axios.get('/auth/me');
       setUser(userResponse.data);
     } catch (error) {
@@ -101,7 +92,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     localStorage.removeItem('token');
     setUser(null);
-    // Resetează axios fără token
     setupAxiosInterceptors(null);
   };
 
