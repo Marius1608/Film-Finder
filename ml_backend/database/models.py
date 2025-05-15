@@ -186,3 +186,14 @@ class UserProfile(Base):
     user = relationship("UserApplication", backref="profile", uselist=False)
 
 
+class UserPreferences(Base):
+    __tablename__ = 'user_preferences'
+
+    user_id = Column(Integer, ForeignKey('users_application.id'), primary_key=True)
+    dark_mode = Column(Boolean, default=False)
+    email_notifications = Column(Boolean, default=True)
+    language = Column(String(10), default='en')
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    user = relationship("UserApplication", backref="preferences", uselist=False)

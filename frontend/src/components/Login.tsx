@@ -102,7 +102,6 @@ export default function Login() {
                     )} />
                   </div>
                 </div>
-=
                 <div className="space-y-2 animate-slide-in-delayed">
                   <label htmlFor="password" className="text-sm font-medium text-gray-700 flex items-center gap-2">
                     <Lock className="w-4 h-4 text-gray-500" />

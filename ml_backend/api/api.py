@@ -1,22 +1,27 @@
 import os
+import random
+
 import openai
 import logging
 from datetime import datetime, timedelta
 from pydoc import text
+import json
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr, json
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict
 
 from sqlalchemy import func
 from sqlalchemy.testing import db
 from starlette import status
+from starlette.responses import JSONResponse
 
 from auth.auth import verify_password, ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, get_password_hash, \
     get_current_user
-from database.models import UserApplication, AppRating, Movie, Watchlist, Notification, UserProfile
+from database.models import UserApplication, AppRating, Movie, Watchlist, Notification, UserProfile, CollectionMovie, \
+    Collection, MovieStatus
 from machine_learning.RecommendationEngine import RecommendationEngine
 from database.connection import get_db
 from sqlalchemy.orm import Session
@@ -66,20 +71,16 @@ class MovieRecommendationRequest(BaseModel):
     method: str = "hybrid"
     limit: int = 10
 
-
 class PersonalizedRecommendationRequest(BaseModel):
     limit: int = 10
-
 
 class SearchRequest(BaseModel):
     query: str
     limit: int = 10
 
-
 class RatingRequest(BaseModel):
     movie_id: int
     rating: float
-
 
 class MovieResponse(BaseModel):
     id: int
@@ -96,7 +97,6 @@ class MovieResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class RecommendationResponse(BaseModel):
     movie_id: int
     title: str
@@ -112,22 +112,28 @@ class RecommendationResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class UserRegister(BaseModel):
     email: EmailStr
     password: str
     first_name: str
     last_name: str
 
-
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+class UpdateProfileRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 
 def get_recommendation_engine():
@@ -166,7 +172,6 @@ def get_movie_details(self, movie_id: int) -> Dict:
         return None
 
 
-# Endpoints
 @app.get("/", tags=["Health"])
 async def root():
     return {"status": "healthy", "message": "Movie Recommendation API"}
@@ -1156,7 +1161,6 @@ async def get_daily_recommendations(
 
     return recommendations[:limit]
 
-
 async def get_user_profile(user_id: int, db: Session):
     profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
     if profile and profile.favorite_genres:
@@ -1169,7 +1173,6 @@ async def get_user_profile(user_id: int, db: Session):
         except:
             pass
     return None
-
 
 async def search_by_genre(genre: str, limit: int, engine: RecommendationEngine):
     try:
@@ -1392,6 +1395,442 @@ async def mark_all_notifications_read(
     db.commit()
 
     return {"message": f"{result} notifications marked as read"}
+
+
+@app.put("/auth/profile", tags=["Settings"])
+async def update_profile(
+        profile_data: UpdateProfileRequest,
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Update user profile information"""
+    try:
+        if profile_data.first_name is not None:
+            current_user.first_name = profile_data.first_name
+        if profile_data.last_name is not None:
+            current_user.last_name = profile_data.last_name
+        if profile_data.email and profile_data.email != current_user.email:
+            # Check if email already exists
+            existing_user = db.query(UserApplication).filter(
+                UserApplication.email == profile_data.email,
+                UserApplication.id != current_user.id
+            ).first()
+            if existing_user:
+                raise HTTPException(status_code=400, detail="Email already in use")
+            current_user.email = profile_data.email
+
+        db.commit()
+        db.refresh(current_user)
+
+        return {
+            "message": "Profile updated successfully",
+            "user": {
+                "id": current_user.id,
+                "email": current_user.email,
+                "first_name": current_user.first_name,
+                "last_name": current_user.last_name
+            }
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating profile: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update profile")
+
+@app.put("/auth/change-password", tags=["Settings"])
+async def change_password(
+        password_data: ChangePasswordRequest,
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    try:
+        # Verify current password
+        if not verify_password(password_data.current_password, current_user.password_hash):
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+        # Hash new password
+        new_password_hash = get_password_hash(password_data.new_password)
+        current_user.password_hash = new_password_hash
+
+        db.commit()
+
+        return {"message": "Password changed successfully"}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error changing password: {e}")
+        raise HTTPException(status_code=500, detail="Failed to change password")
+
+@app.delete("/auth/delete-account", tags=["Settings"])
+async def delete_account(
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    try:
+        user_id = current_user.id
+        logger.info(f"Starting account deletion for user {user_id}")
+
+        deleted_notifications = db.query(Notification).filter(
+            Notification.user_id == user_id
+        ).delete(synchronize_session=False)
+        logger.info(f"Deleted {deleted_notifications} notifications")
+
+        deleted_ratings = db.query(AppRating).filter(
+            AppRating.user_app_id == user_id
+        ).delete(synchronize_session=False)
+        logger.info(f"Deleted {deleted_ratings} app ratings")
+
+        deleted_watchlist = db.query(Watchlist).filter(
+            Watchlist.user_app_id == user_id
+        ).delete(synchronize_session=False)
+        logger.info(f"Deleted {deleted_watchlist} watchlist items")
+
+        deleted_status = db.query(MovieStatus).filter(
+            MovieStatus.user_app_id == user_id
+        ).delete(synchronize_session=False)
+        logger.info(f"Deleted {deleted_status} movie status records")
+
+        collections = db.query(Collection).filter(
+            Collection.user_app_id == user_id
+        ).all()
+
+        for collection in collections:
+            deleted_collection_movies = db.query(CollectionMovie).filter(
+                CollectionMovie.collection_id == collection.id
+            ).delete(synchronize_session=False)
+            logger.info(f"Deleted {deleted_collection_movies} movies from collection {collection.id}")
+
+        deleted_collections = db.query(Collection).filter(
+            Collection.user_app_id == user_id
+        ).delete(synchronize_session=False)
+        logger.info(f"Deleted {deleted_collections} collections")
+
+        deleted_profile = db.query(UserProfile).filter(
+            UserProfile.user_id == user_id
+        ).delete(synchronize_session=False)
+        logger.info(f"Deleted {deleted_profile} user profiles")
+
+        deleted_user = db.query(UserApplication).filter(
+            UserApplication.id == user_id
+        ).delete(synchronize_session=False)
+        logger.info(f"Deleted {deleted_user} user account")
+
+        db.commit()
+
+        logger.info(f"Successfully deleted account for user {user_id}")
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"message": "Account deleted successfully"}
+        )
+
+    except Exception as e:
+        db.rollback()
+        error_message = f"Error deleting account for user {current_user.id}: {str(e)}"
+        logger.error(error_message)
+        import traceback
+        logger.error(traceback.format_exc())
+
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": error_message}
+        )
+
+
+@app.get("/analytics/rating-distribution", tags=["Features"])
+async def get_rating_distribution(
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    try:
+        ratings = db.query(AppRating).filter(
+            AppRating.user_app_id == current_user.id
+        ).all()
+
+        distribution = {}
+        for rating in ratings:
+            rating_value = float(rating.rating)
+            distribution[rating_value] = distribution.get(rating_value, 0) + 1
+
+        result = []
+        for rating_value in sorted(distribution.keys()):
+            result.append({
+                "rating": rating_value,
+                "count": distribution[rating_value]
+            })
+
+        return result
+    except Exception as e:
+        logger.error(f"Error getting rating distribution: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get rating distribution")
+
+@app.get("/analytics/genre-trends", tags=["Features"])
+async def get_genre_trends(
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    try:
+        ratings = db.query(AppRating, Movie).join(
+            Movie, AppRating.movie_id == Movie.id
+        ).filter(
+            AppRating.user_app_id == current_user.id
+        ).order_by(AppRating.timestamp).all()
+
+        genre_trends = {}
+        for rating, movie in ratings:
+            if movie.genres:
+                month_key = rating.timestamp.strftime("%Y-%m")
+                if month_key not in genre_trends:
+                    genre_trends[month_key] = {}
+
+                for genre in movie.genres.split('|'):
+                    if genre not in genre_trends[month_key]:
+                        genre_trends[month_key][genre] = 0
+                    genre_trends[month_key][genre] += 1
+
+        result = []
+        for month, genres in sorted(genre_trends.items()):
+            result.append({
+                "month": month,
+                "genres": genres
+            })
+
+        return result
+    except Exception as e:
+        logger.error(f"Error getting genre trends: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get genre trends")
+
+@app.get("/analytics/watch-statistics", tags=["Features"])
+async def get_watch_statistics(
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    try:
+        ratings = db.query(AppRating).filter(
+            AppRating.user_app_id == current_user.id
+        ).all()
+
+        if not ratings:
+            return {
+                "total_movies_rated": 0,
+                "average_rating": 0,
+                "highest_rated_genre": None,
+                "most_watched_year": None
+            }
+
+        total_ratings = len(ratings)
+        avg_rating = sum(r.rating for r in ratings) / total_ratings
+
+        genre_ratings = {}
+        year_counts = {}
+
+        for rating in ratings:
+            movie = db.query(Movie).filter(Movie.id == rating.movie_id).first()
+            if movie:
+                if movie.genres:
+                    for genre in movie.genres.split('|'):
+                        if genre not in genre_ratings:
+                            genre_ratings[genre] = []
+                        genre_ratings[genre].append(rating.rating)
+
+                if movie.year:
+                    year_counts[movie.year] = year_counts.get(movie.year, 0) + 1
+
+        highest_rated_genre = None
+        highest_avg = 0
+        for genre, ratings_list in genre_ratings.items():
+            avg = sum(ratings_list) / len(ratings_list)
+            if avg > highest_avg:
+                highest_avg = avg
+                highest_rated_genre = genre
+
+        most_watched_year = max(year_counts.items(), key=lambda x: x[1])[0] if year_counts else None
+
+        return {
+            "total_movies_rated": total_ratings,
+            "average_rating": round(avg_rating, 2),
+            "highest_rated_genre": highest_rated_genre,
+            "most_watched_year": most_watched_year,
+            "genre_stats": {
+                genre: {
+                    "count": len(ratings_list),
+                    "average": round(sum(ratings_list) / len(ratings_list), 2)
+                }
+                for genre, ratings_list in genre_ratings.items()
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error getting watch statistics: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get watch statistics")
+
+
+@app.post("/chatbot/generate-quiz", tags=["Chatbot"])
+async def generate_movie_quiz(
+        count: int = 5,
+        current_user: UserApplication = Depends(get_current_user),
+        db: Session = Depends(get_db),
+        engine: RecommendationEngine = Depends(get_recommendation_engine)
+):
+    movies = db.query(Movie).filter(
+        Movie.overview.isnot(None),
+        Movie.vote_average >= 6.0,
+        Movie.year.isnot(None)
+    ).order_by(func.random()).limit(count * 3).all()
+
+    movie_data = []
+    for movie in movies:
+        movie_data.append({
+            "title": movie.title,
+            "year": movie.year,
+            "genres": movie.genres,
+            "overview": movie.overview[:200] if movie.overview else "",
+            "rating": movie.vote_average
+        })
+
+    context = f"I have these movies in my database: {json.dumps(movie_data)}. Create {count} quiz questions about movies."
+
+    prompt = f"""
+    You are a movie quiz master. Create {count} challenging multiple-choice questions about movies.
+
+    Format each question exactly like this:
+    Question: [the question]
+    A) [option 1]
+    B) [option 2]
+    C) [option 3]
+    D) [option 4]
+    Correct: [A, B, C, or D]
+    Explanation: [brief explanation]
+
+    Use this movie data to create questions:
+    {context}
+
+    Create diverse questions about:
+    - Movie release years
+    - Directors
+    - Actors
+    - Plot points
+    - Awards
+    - Genres
+    - Ratings
+    """
+
+    if GROQ_API_KEY:
+        try:
+            client = Groq(api_key=GROQ_API_KEY)
+
+            completion = client.chat.completions.create(
+                model="mixtral-8x7b-32768",  # or "llama3-8b-8192"
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a movie quiz master. Create engaging and challenging quiz questions."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.7,
+                max_tokens=1500,
+            )
+
+            # Parse AI response into quiz format
+            ai_response = completion.choices[0].message.content
+            questions = parse_quiz_questions(ai_response)
+
+            return {"questions": questions, "source": "Groq"}
+
+        except Exception as e:
+            logger.error(f"Groq API error: {str(e)}")
+
+    return generate_manual_quiz(movies, count)
+
+def parse_quiz_questions(ai_response: str) -> List[Dict]:
+    questions = []
+    current_question = {}
+
+    lines = ai_response.split('\n')
+    for line in lines:
+        line = line.strip()
+        if line.startswith('Question:'):
+            if current_question:
+                questions.append(current_question)
+            current_question = {
+                'question': line.replace('Question:', '').strip(),
+                'options': [],
+                'correct': 0,
+                'explanation': ''
+            }
+        elif line.startswith(('A)', 'B)', 'C)', 'D)')):
+            if 'options' in current_question:
+                current_question['options'].append(line[3:].strip())
+        elif line.startswith('Correct:'):
+            correct_letter = line.replace('Correct:', '').strip()
+            if correct_letter in ['A', 'B', 'C', 'D']:
+                current_question['correct'] = ord(correct_letter) - ord('A')
+        elif line.startswith('Explanation:'):
+            current_question['explanation'] = line.replace('Explanation:', '').strip()
+
+    if current_question and 'question' in current_question:
+        questions.append(current_question)
+
+    return questions
+
+def generate_manual_quiz(movies: List[Movie], count: int) -> Dict:
+    questions = []
+
+    for i in range(min(count, len(movies))):
+        movie = movies[i]
+        question_type = i % 3
+
+        if question_type == 0:  # Year question
+            correct_year = movie.year
+            options = [
+                str(correct_year - 2),
+                str(correct_year),
+                str(correct_year + 1),
+                str(correct_year + 3)
+            ]
+            questions.append({
+                "question": f"In which year was '{movie.title}' released?",
+                "options": options,
+                "correct": 1,
+                "explanation": f"'{movie.title}' was released in {correct_year}."
+            })
+
+        elif question_type == 1:
+            genres = movie.genres.split('|') if movie.genres else ["Drama"]
+            correct_genre = genres[0]
+            all_genres = ["Action", "Comedy", "Drama", "Horror", "Sci-Fi", "Romance"]
+            options = [correct_genre] + [g for g in all_genres if g != correct_genre][:3]
+            random.shuffle(options)
+            correct_index = options.index(correct_genre)
+
+            questions.append({
+                "question": f"What is the primary genre of '{movie.title}'?",
+                "options": options,
+                "correct": correct_index,
+                "explanation": f"'{movie.title}' is primarily a {correct_genre} movie."
+            })
+
+        else:  # Rating question
+            rating = round(movie.vote_average, 1) if movie.vote_average else 7.0
+            options = [
+                f"{round(rating - 0.5, 1)}/10",
+                f"{round(rating, 1)}/10",
+                f"{round(rating + 0.3, 1)}/10",
+                f"{round(rating + 0.8, 1)}/10"
+            ]
+            questions.append({
+                "question": f"What is the average rating of '{movie.title}'?",
+                "options": options,
+                "correct": 1,
+                "explanation": f"'{movie.title}' has an average rating of {rating}/10."
+            })
+
+    return {"questions": questions, "source": "manual"}
 
 
 if __name__ == "__main__":

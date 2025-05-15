@@ -12,6 +12,7 @@ import {
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import axios from 'axios';
+import { useRouter } from 'next/navigation';
 
 interface WatchlistItem {
   title: string;
@@ -76,6 +77,7 @@ export default function FeaturesPage() {
   const { user } = useAuth();
   const [isExporting, setIsExporting] = useState<string | null>(null);
   const [quizLoading, setQuizLoading] = useState(false);
+  const router = useRouter();
 
   const handleExportWatchlist = async () => {
     setIsExporting('watchlist');
@@ -153,29 +155,28 @@ export default function FeaturesPage() {
     }
   };
 
-  const handleFeatureClick = async (featureId: string) => {
-    switch (featureId) {
-      case 'export-watchlist':
-        await handleExportWatchlist();
-        break;
-      case 'export-ratings':
-        await handleExportRatings();
-        break;
-      case 'quiz':
-        setQuizLoading(true);
-        setTimeout(() => {
-          toast('Movie Quiz coming soon!', { icon: '🎮' });
-          setQuizLoading(false);
-        }, 1000);
-        break;
-      case 'rating-charts':
-      case 'genre-trends':
-        toast('Charts and analytics coming soon!', { icon: '📊' });
-        break;
-      default:
-        toast('Feature coming soon!', { icon: '🚀' });
-    }
-  };
+const handleFeatureClick = async (featureId: string) => {
+  switch (featureId) {
+    case 'export-watchlist':
+      await handleExportWatchlist();
+      break;
+    case 'export-ratings':
+      await handleExportRatings();
+      break;
+    case 'quiz':
+      setQuizLoading(true);
+      router.push('/movie-quiz');
+      break;
+    case 'rating-charts':
+      router.push('/analytics/ratings');
+      break;
+    case 'genre-trends':
+      router.push('/analytics/genres');
+      break;
+    default:
+      toast('Feature coming soon!', { icon: '🚀' });
+  }
+};
 
   if (!user) {
     return (

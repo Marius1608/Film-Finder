@@ -14,6 +14,7 @@ import {
   Moon, Sun, Palette
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import axios from 'axios';
 
 interface UserSettings {
   email: string;
@@ -47,57 +48,106 @@ export default function SettingsPage() {
   };
 
   const handleSaveProfile = async () => {
-    setIsLoading(true);
-    try {
-      toast.success('Profile updated successfully');
-    } catch {
-      toast.error('Failed to update profile');
-    } finally {
-      setIsLoading(false);
-    }
+  setIsLoading(true);
+  try {
+    await axios.put('/auth/profile', {
+      first_name: settings.firstName,
+      last_name: settings.lastName,
+      email: settings.email
+    });
+    toast.success('Profile updated successfully');
+  } catch (error) {
+    console.error('Profile update error:', error);
+    toast.error('Failed to update profile');
+  } finally {
+    setIsLoading(false);
+  }
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      toast.error('New passwords do not match');
-      return;
-    }
+ const handleChangePassword = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    toast.error('New passwords do not match');
+    return;
+  }
 
-    if (passwordForm.newPassword.length < 6) {
-      toast.error('Password must be at least 6 characters');
-      return;
-    }
+  if (passwordForm.newPassword.length < 6) {
+    toast.error('Password must be at least 6 characters');
+    return;
+  }
 
-    setIsLoading(true);
-    try {
-      toast.success('Password changed successfully');
-      setPasswordForm({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-      });
-    } catch {
+  setIsLoading(true);
+  try {
+    await axios.put('/auth/change-password', {
+      current_password: passwordForm.currentPassword,
+      new_password: passwordForm.newPassword
+    });
+    toast.success('Password changed successfully');
+    setPasswordForm({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    });
+  } catch (error) {
+    console.error('Password change error:', error);
+    // @ts-expect-error: error may not have 'response', but we want to check for it
+    if (error.response?.status === 401) {
+      toast.error('Current password is incorrect');
+    } else {
       toast.error('Failed to change password');
-    } finally {
-      setIsLoading(false);
     }
+  } finally {
+    setIsLoading(false);
+  }
   };
+  
 
-  const handleDeleteAccount = async () => {
-    if (!deleteConfirm) {
-      setDeleteConfirm(true);
-      return;
-    }
+const handleDeleteAccount = async () => {
+  if (!deleteConfirm) {
+    setDeleteConfirm(true);
+    toast.error('Click again to confirm account deletion');
+    return;
+  }
 
-    try {
+  setIsLoading(true);
+  try {
+    const response = await axios.delete('/auth/delete-account', {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (response.status === 200) {
       toast.success('Account deleted successfully');
+      
+      localStorage.removeItem('token');
+      
       logout();
-    } catch {
+      
+      window.location.href = '/';
+    }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('Delete account error:', error);
+    
+    if (error.response?.status === 500) {
+      toast.error('Server error - please contact support');
+      console.error('Server error details:', error.response.data);
+    } else if (error.code === 'ERR_NETWORK') {
+      toast.error('Network error - please check your connection');
+    } else if (error.response?.data?.detail) {
+      toast.error(error.response.data.detail);
+    } else {
       toast.error('Failed to delete account');
     }
-  };
+    
+    setDeleteConfirm(false);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
