@@ -2,20 +2,44 @@
 
 import { useState } from 'react';
 import MovieCard from '@/components/MovieCard';
-import { Loader2, Sparkles } from 'lucide-react';
+import { 
+ Sparkles, TrendingUp, Brain, Users, 
+  RefreshCw,Wand2, Trophy, Target
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent} from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
 import type { MovieRecommendation } from '@/types/movie';
+import { cn } from '@/lib/utils';
+
+const methodDetails = {
+  hybrid: {
+    icon: <Wand2 className="w-5 h-5" />,
+    description: 'Combines multiple recommendation approaches for best results',
+    color: 'bg-gradient-to-r from-purple-500 to-pink-500'
+  },
+  collaborative: {
+    icon: <Users className="w-5 h-5" />,
+    description: 'Based on similar users preferences',
+    color: 'bg-gradient-to-r from-blue-500 to-cyan-500'
+  },
+  personalized: {
+    icon: <Brain className="w-5 h-5" />,
+    description: 'Tailored specifically to your unique taste',
+    color: 'bg-gradient-to-r from-green-500 to-emerald-500'
+  }
+};
 
 export default function RecommendationsPage() {
   const { user } = useAuth();
   const [method, setMethod] = useState('hybrid');
   const [limit, setLimit] = useState(20);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
-  const { data: recommendations, isLoading, error } = useQuery<MovieRecommendation[]>({
+  const { data: recommendations, isLoading, error, refetch } = useQuery<MovieRecommendation[]>({
     queryKey: ['recommendations', user?.id, method, limit],
     queryFn: async () => {
       if (!user?.id) return [];
@@ -56,12 +80,28 @@ export default function RecommendationsPage() {
     Array.from(new Map(recommendations.map(movie => [movie.movie_id, movie])).values()) 
     : [];
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refetch();
+    setIsRefreshing(false);
+  };
+
   if (!user) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-center">Please login to see personalized recommendations</p>
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex items-center justify-center">
+        <Card className="max-w-md w-full shadow-xl border-0 animate-scale-in">
+          <CardContent className="pt-8 pb-8 text-center">
+            <div className="p-4 bg-primary/10 rounded-full inline-block mb-4">
+              <Sparkles className="h-12 w-12 text-primary animate-pulse" />
+            </div>
+            <h3 className="text-xl font-semibold mb-2">Login Required</h3>
+            <p className="text-gray-500 mb-4">Please login to see personalized recommendations</p>
+            <Button 
+              onClick={() => window.location.href = '/login'}
+              className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
+            >
+              Login Now
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -71,89 +111,202 @@ export default function RecommendationsPage() {
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin" />
+        <div className="relative">
+          <Sparkles className="w-16 h-16 text-primary animate-pulse" />
+          <div className="absolute inset-0 animate-ping">
+            <Sparkles className="w-16 h-16 text-primary/30" />
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="text-center py-8">
-        <p className="text-red-500">Error loading recommendations</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="max-w-md w-full shadow-xl border-0">
+          <CardContent className="pt-8 pb-8 text-center">
+            <div className="p-4 bg-red-100 rounded-full inline-block mb-4">
+              <X className="h-12 w-12 text-red-500" />
+            </div>
+            <p className="text-red-500 text-xl mb-4">Error loading recommendations</p>
+            <Button 
+              onClick={() => refetch()}
+              variant="outline"
+              className="hover:border-primary"
+            >
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
-          <Sparkles className="w-8 h-8 text-yellow-500" />
-          Your Recommendations
-        </h1>
-        <p className="text-gray-600">Movies tailored to your taste</p>
-      </div>
+    <main className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8 animate-fade-in">
+          <h1 className="text-4xl md:text-5xl font-bold mb-4 flex items-center gap-3">
+            <div className="p-2 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-xl shadow-lg">
+              <Sparkles className="w-10 h-10 text-white animate-pulse" />
+            </div>
+            <span className="bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+              Your Recommendations
+            </span>
+          </h1>
+          <p className="text-gray-600 text-lg">Movies tailored specially for your unique taste</p>
+        </div>
 
-      <div className="flex justify-between items-center mb-6">
-        <Select value={method} onValueChange={setMethod}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Recommendation method" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="hybrid">Hybrid</SelectItem>
-            <SelectItem value="collaborative">Collaborative Filtering</SelectItem>
-            <SelectItem value="personalized">Personalized</SelectItem>
-          </SelectContent>
-        </Select>
-        
-        <Select value={limit.toString()} onValueChange={(v) => setLimit(Number(v))}>
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="Number of results" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="10">Show 10</SelectItem>
-            <SelectItem value="20">Show 20</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          {Object.entries(methodDetails).map(([key, details], index) => (
+            <Card 
+              key={key}
+              className={cn(
+                "cursor-pointer border-2 transition-all duration-300 animate-scale-in hover:shadow-lg",
+                method === key ? "border-primary shadow-lg" : "border-transparent hover:border-gray-300"
+              )}
+              style={{ animationDelay: `${index * 100}ms` }}
+              onClick={() => setMethod(key)}
+            >
+              <CardContent className="p-4">
+                <div className={cn(
+                  "flex items-center gap-3 mb-2",
+                  method === key && "text-primary"
+                )}>
+                  <div className={cn(
+                    "p-2 rounded-lg text-white",
+                    details.color
+                  )}>
+                    {details.icon}
+                  </div>
+                  <h3 className="font-semibold capitalize">
+                    {key.replace('_', ' ')}
+                  </h3>
+                </div>
+                <p className="text-sm text-gray-600">{details.description}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
 
-      {uniqueRecommendations && uniqueRecommendations.length > 0 ? (
-        <>
-          <div className="mb-4 text-sm text-gray-600">
-            Showing {uniqueRecommendations.length} recommendations using {method.replace('_', ' ')} method
+        <Card className="mb-8 shadow-lg border-0 animate-slide-up">
+          <CardContent className="py-6">
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Target className="w-5 h-5 text-primary" />
+                <span className="font-medium">Recommendation Settings</span>
+              </div>
+              
+              <div className="flex flex-wrap gap-4 items-center">
+                <Select value={limit.toString()} onValueChange={(v) => setLimit(Number(v))}>
+                  <SelectTrigger className="w-[150px] border-2 hover:border-primary transition-colors">
+                    <SelectValue placeholder="Number of results" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">Show 10</SelectItem>
+                    <SelectItem value="20">Show 20</SelectItem>
+                    <SelectItem value="30">Show 30</SelectItem>
+                    <SelectItem value="50">Show 50</SelectItem>
+                  </SelectContent>
+                </Select>
+                
+                <Button
+                  onClick={handleRefresh}
+                  variant="outline"
+                  disabled={isRefreshing}
+                  className="hover:border-primary transition-colors"
+                >
+                  <RefreshCw className={cn(
+                    "w-4 h-4 mr-2",
+                    isRefreshing && "animate-spin"
+                  )} />
+                  Refresh
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {uniqueRecommendations.length > 0 && (
+          <div className="mb-6 flex items-center justify-between animate-fade-in">
+            <div className="flex items-center gap-4 text-sm text-gray-600">
+              <span className="flex items-center gap-1">
+                <Trophy className="w-4 h-4 text-yellow-500" />
+                {uniqueRecommendations.length} recommendations found
+              </span>
+              <span className="flex items-center gap-1">
+                <TrendingUp className="w-4 h-4 text-green-500" />
+                Using {method} algorithm
+              </span>
+            </div>
           </div>
+        )}
+
+        {uniqueRecommendations && uniqueRecommendations.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
             {uniqueRecommendations.map((movie, index) => (
-              <div key={`${movie.movie_id}-${index}`} className="relative">
+              <div 
+                key={`${movie.movie_id}-${index}`} 
+                className="relative animate-scale-fade-in"
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
                 <MovieCard
                   movie={movie}
                   onSelect={(movie) => {
                     window.location.href = `/movies/${movie.movie_id}`;
                   }}
+                  index={index}
                 />
+                
                 {movie.similarity_score && (
-                  <div className="absolute top-2 right-2 bg-primary text-primary-foreground px-2 py-1 rounded-md text-xs">
+                  <div className={cn(
+                    "absolute top-2 right-2 px-3 py-1 rounded-full text-xs font-bold shadow-lg",
+                    "bg-gradient-to-r text-white animate-pulse",
+                    movie.similarity_score >= 0.8 
+                      ? "from-green-500 to-emerald-500" 
+                      : movie.similarity_score >= 0.6 
+                        ? "from-yellow-500 to-orange-500"
+                        : "from-blue-500 to-cyan-500"
+                  )}>
                     {(movie.similarity_score * 100).toFixed(0)}% match
                   </div>
                 )}
+                
                 {movie.method && (
-                  <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-xs">
-                    {movie.method}
+                  <div className="absolute bottom-4 left-4 bg-black/80 backdrop-blur-sm text-white px-3 py-1 rounded-lg text-xs font-medium shadow-lg">
+                    {movie.method.replace('_', ' ')}
                   </div>
                 )}
               </div>
             ))}
           </div>
-        </>
-      ) : (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-center text-gray-500">
-              No recommendations available. Try rating some movies first!
-            </p>
-          </CardContent>
-        </Card>
-      )}
+        ) : (
+          <Card className="shadow-xl border-0">
+            <CardContent className="py-12 text-center">
+              <div className="relative inline-block mb-6">
+                <Film className="w-20 h-20 text-gray-300" />
+                <div className="absolute bottom-0 right-0 bg-yellow-500 rounded-full p-1">
+                  <Sparkles className="w-6 h-6 text-white" />
+                </div>
+              </div>
+              <h3 className="text-xl font-semibold mb-2">No Recommendations Yet</h3>
+              <p className="text-gray-500 mb-6">
+                Start rating movies to get personalized recommendations!
+              </p>
+              <Button 
+                onClick={() => window.location.href = '/movies'}
+                className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
+              >
+                <Film className="w-4 h-4 mr-2" />
+                Browse Movies
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </main>
   );
 }
+
+import { X, Film } from 'lucide-react';

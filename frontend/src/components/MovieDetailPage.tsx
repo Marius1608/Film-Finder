@@ -2,7 +2,11 @@
 
 import { useMovie, useRecommendations } from '@/hooks/useMovies';
 import { Button } from '@/components/ui/button';
-import { Star, Calendar, Plus, BookmarkIcon, MessageSquare, Film } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { 
+  Star, Calendar, Plus, BookmarkIcon, MessageSquare, Film, 
+  ChevronLeft, Eye, Award 
+} from 'lucide-react';
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import MovieCard from '@/components/MovieCard';
@@ -12,12 +16,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { Dialog } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
 
 interface MovieDetailPageProps {
   movieId: number;
 }
 
 export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
+  const router = useRouter();
   const { user } = useAuth();
   const { data: movie, isLoading, error } = useMovie(movieId);
   const { data: recommendations } = useRecommendations(movieId);
@@ -26,17 +33,8 @@ export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (movie) {
-      console.log('Movie data received:', {
-        title: movie.title,
-        poster_path: movie.poster_path,
-        tmdb_id: movie.tmdb_id,
-        fullMovie: movie
-      });
-    }
-  }, [movie]);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [showFullOverview, setShowFullOverview] = useState(false);
 
   useEffect(() => {
     if (user && movie) {
@@ -88,12 +86,12 @@ export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
     setIsSubmitting(true);
     
     try {
-     await axios.post(`/ratings`, null, {
-      params: {
-        movie_id: movieId,
-        rating: rating
-      }
-    });
+      await axios.post(`/ratings`, null, {
+        params: {
+          movie_id: movieId,
+          rating: rating
+        }
+      });
       
       setUserRating(rating);
       toast.success('Rating saved successfully');
@@ -145,15 +143,25 @@ export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+        <div className="relative">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <div className="absolute inset-0 animate-ping rounded-full h-12 w-12 border-b-2 border-primary/30"></div>
+        </div>
       </div>
     );
   }
 
   if (error || !movie) {
     return (
-      <div className="text-center py-8">
-        <p className="text-red-500">Error loading movie details</p>
+      <div className="text-center py-8 animate-fade-in">
+        <p className="text-red-500 text-xl">Error loading movie details</p>
+        <Button 
+          onClick={() => router.back()} 
+          className="mt-4"
+          variant="outline"
+        >
+          Go Back
+        </Button>
       </div>
     );
   }
@@ -162,130 +170,219 @@ export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
   const posterUrl = hasValidPoster 
     ? `${process.env.NEXT_PUBLIC_TMDB_IMAGE_BASE_URL}${movie.poster_path}`
     : '';
-  
-  console.log('Poster debug:', {
-    poster_path: movie.poster_path,
-    hasValidPoster,
-    posterUrl,
-    env_url: process.env.NEXT_PUBLIC_TMDB_IMAGE_BASE_URL
-  });
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="grid md:grid-cols-[300px_1fr] gap-8 mb-12">
-        <div className="relative aspect-[2/3] w-full max-w-[300px] mx-auto md:mx-0 shadow-lg rounded-lg overflow-hidden bg-gray-200">
-          {imageError || !hasValidPoster ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <Film className="w-20 h-20 text-gray-400" />
-            </div>
-          ) : (
-            <Image
-              src={posterUrl}
-              alt={movie.title}
-              fill
-              sizes="(max-width: 768px) 100vw, 300px"
-              className="object-cover"
-              onError={() => {
-                console.error('Image failed to load:', posterUrl);
-                setImageError(true);
-              }}
-              priority
-            />
-          )}
-        </div>
-        
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold mb-4 break-words">{movie.title}</h1>
-          
-          <div className="flex items-center gap-4 mb-4">
-            {movie.year && (
-              <div className="flex items-center text-gray-600">
-                <Calendar className="w-4 h-4 mr-1" />
-                {movie.year}
-              </div>
-            )}
-            {movie.average_rating && (
-              <div className="flex items-center">
-                <Star className="w-4 h-4 fill-yellow-400 text-yellow-400 mr-1" />
-                <span className="font-semibold">{movie.average_rating.toFixed(1)}</span>
-                <span className="text-gray-500 ml-1">({movie.rating_count} ratings)</span>
-              </div>
-            )}
-          </div>
-
-          {movie.genres && (
-            <div className="flex flex-wrap gap-2 mb-6">
-              {movie.genres.split('|').map((genre, index) => (
-                <span
-                  key={index}
-                  className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-sm"
-                >
-                  {genre}
-                </span>
-              ))}
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-4 mb-6">
-            {user && (
-              <Button 
-                onClick={handleWatchlistToggle}
-                variant={isInWatchlist ? "default" : "outline"}
-                className="flex items-center gap-2"
-                disabled={isSubmitting}
-              >
-                {isInWatchlist ? <BookmarkIcon className="fill-current" /> : <Plus />}
-                {isInWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
-              </Button>
-            )}
-            <Button 
-              variant="secondary" 
-              className="flex items-center gap-2"
-              onClick={() => setIsChatOpen(true)}
-            >
-              <MessageSquare className="w-4 h-4" />
-              Ask About This Movie
-            </Button>
-          </div>
-
-          {user && (
-            <div className="mb-6">
-              <h3 className="text-sm font-medium mb-2">Rate this movie:</h3>
-              <RatingStars 
-                rating={userRating || 0} 
-                onRatingChange={handleRating}
-                readonly={isSubmitting}
-              />
-            </div>
-          )}
-
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg shadow-sm">
-            <h2 className="text-xl font-semibold mb-3">Overview</h2>
-            {movie.overview ? (
-              <p className="text-gray-700 leading-relaxed">{movie.overview}</p>
-            ) : (
-              <p className="text-gray-500 italic">No overview available</p>
-            )}
-          </div>
-        </div>
+    <main className="relative min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 pointer-events-none" />
+      
+      <div className="container mx-auto px-4 pt-4">
+        <Button
+          onClick={() => router.back()}
+          variant="ghost"
+          className="mb-4 hover:scale-105 transition-transform"
+        >
+          <ChevronLeft className="w-4 h-4 mr-2" />
+          Back to Movies
+        </Button>
       </div>
 
-      {recommendations && recommendations.length > 0 && (
-        <section className="mb-12">
-          <h2 className="text-2xl font-semibold mb-6">Recommended for You</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-            {recommendations.slice(0, 5).map((movie) => (
-              <MovieCard
-                key={movie.movie_id}
-                movie={movie}
-                onSelect={(movie) => {
-                  window.location.href = `/movies/${movie.movie_id}`;
-                }}
-              />
-            ))}
+      <div className="container mx-auto px-4 pb-8">
+        <div className="grid lg:grid-cols-[350px_1fr] gap-8 mb-12">
+          <div className="w-full">
+            <div className={cn(
+              "relative aspect-[2/3] w-full max-w-[350px] mx-auto lg:mx-0 rounded-xl overflow-hidden transform transition-all duration-500",
+              imageLoaded ? "scale-100 opacity-100" : "scale-95 opacity-0"
+            )}>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent z-10" />
+              {imageError || !hasValidPoster ? (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
+                  <Film className="w-20 h-20 text-gray-400 animate-pulse" />
+                </div>
+              ) : (
+                <Image
+                  src={posterUrl}
+                  alt={movie.title}
+                  fill
+                  sizes="(max-width: 768px) 100vw, 350px"
+                  className="object-cover"
+                  onLoad={() => setImageLoaded(true)}
+                  onError={() => {
+                    setImageError(true);
+                    setImageLoaded(true);
+                  }}
+                  priority
+                />
+              )}
+              
+              {movie.average_rating && (
+                <div className="absolute top-4 right-4 bg-black/80 backdrop-blur-sm rounded-full px-3 py-2 flex items-center gap-1 z-20 animate-slide-in">
+                  <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                  <span className="text-white font-semibold">{movie.average_rating.toFixed(1)}</span>
+                </div>
+              )}
+            </div>
+
+            <Card className="mt-4 border-0 shadow-lg animate-fade-in-delayed">
+              <CardContent className="p-4">
+                <div className="grid grid-cols-2 gap-4 text-center">
+                  <div>
+                    <Eye className="w-5 h-5 mx-auto mb-1 text-gray-500" />
+                    <p className="text-sm font-medium">{movie.rating_count || 0}</p>
+                    <p className="text-xs text-gray-500">Views</p>
+                  </div>
+                  <div>
+                    <Award className="w-5 h-5 mx-auto mb-1 text-yellow-500" />
+                    <p className="text-sm font-medium">Top</p>
+                    <p className="text-xs text-gray-500">Rated</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </section>
-      )}
+          
+          <div className="animate-fade-in">
+            <h1 className="text-4xl lg:text-5xl font-bold mb-4 text-gray-900 animate-slide-in">
+              {movie.title}
+            </h1>
+            
+            <div className="flex flex-wrap items-center gap-4 mb-6 text-gray-600 animate-fade-in-delayed">
+              {movie.year && (
+                <div className="flex items-center">
+                  <Calendar className="w-4 h-4 mr-1" />
+                  {movie.year}
+                </div>
+              )}
+              {movie.average_rating && (
+                <div className="flex items-center">
+                  <Star className="w-4 h-4 fill-yellow-400 text-yellow-400 mr-1" />
+                  <span className="font-semibold text-gray-900">{movie.average_rating.toFixed(1)}</span>
+                  <span className="ml-1">({movie.rating_count} ratings)</span>
+                </div>
+              )}
+            </div>
+
+            {movie.genres && (
+              <div className="flex flex-wrap gap-2 mb-6 animate-stagger-in">
+                {movie.genres.split('|').map((genre, index) => (
+                  <span
+                    key={index}
+                    className="bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium hover:bg-primary/20 transition-colors cursor-pointer transform hover:scale-105"
+                    style={{ animationDelay: `${index * 100}ms` }}
+                  >
+                    {genre}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-3 mb-8 animate-fade-in-delayed">
+              {user && (
+                <Button 
+                  onClick={handleWatchlistToggle}
+                  variant={isInWatchlist ? "default" : "outline"}
+                  className={cn(
+                    "flex items-center gap-2 transition-all duration-300 transform hover:scale-105",
+                    isInWatchlist && "bg-gradient-to-r from-primary to-primary/80"
+                  )}
+                  disabled={isSubmitting}
+                >
+                  {isInWatchlist ? (
+                    <>
+                      <BookmarkIcon className="w-4 h-4 fill-current" />
+                      In Watchlist
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Add to Watchlist
+                    </>
+                  )}
+                </Button>
+              )}
+              
+              <Button 
+                variant="secondary" 
+                className="flex items-center gap-2 hover:scale-105 transition-transform"
+                onClick={() => setIsChatOpen(true)}
+              >
+                <MessageSquare className="w-4 h-4" />
+                Ask AI Assistant
+              </Button>
+            </div>
+
+            {user && (
+              <Card className="mb-6 border-0 shadow-lg animate-fade-in-delayed">
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-medium mb-3 text-gray-700">Your Rating</h3>
+                  <RatingStars 
+                    rating={userRating || 0} 
+                    onRatingChange={handleRating}
+                    readonly={isSubmitting}
+                    size="lg"
+                    showValue={true}
+                    animated={true}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            <Card className="mb-6 border-0 shadow-lg animate-fade-in-delayed">
+              <CardContent className="p-6">
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                  <Film className="w-5 h-5 text-primary" />
+                  Overview
+                </h2>
+                {movie.overview ? (
+                  <div>
+                    <p className={cn(
+                      "text-gray-700 leading-relaxed transition-all duration-300",
+                      !showFullOverview && "line-clamp-3"
+                    )}>
+                      {movie.overview}
+                    </p>
+                    {movie.overview.length > 200 && (
+                      <button
+                        onClick={() => setShowFullOverview(!showFullOverview)}
+                        className="text-primary hover:text-primary/80 text-sm font-medium mt-2 transition-colors"
+                      >
+                        {showFullOverview ? 'Show Less' : 'Read More'}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 italic">No overview available</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {recommendations && recommendations.length > 0 && (
+          <section className="animate-fade-in-delayed">
+            <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+              <Sparkles className="w-6 h-6 text-primary animate-pulse" />
+              You Might Also Like
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {recommendations.slice(0, 5).map((movie, index) => (
+                <div
+                  key={movie.movie_id}
+                  className="transform transition-all duration-300 hover:scale-105 hover:z-10"
+                  style={{ animationDelay: `${index * 100}ms` }}
+                >
+                  <MovieCard
+                    movie={movie}
+                    onSelect={(movie) => {
+                      window.location.href = `/movies/${movie.movie_id}`;
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
 
       {movie && (
         <Dialog open={isChatOpen} onOpenChange={setIsChatOpen}>
@@ -295,3 +392,5 @@ export default function MovieDetailPage({ movieId }: MovieDetailPageProps) {
     </main>
   );
 }
+
+import { Sparkles } from 'lucide-react';

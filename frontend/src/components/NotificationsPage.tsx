@@ -1,14 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Bell, Check, Film, Info, AlertTriangle, X, RefreshCw, Sparkles, CheckCircle, Trash2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle} from '@/components/ui/card';
+import { 
+  Bell, Check, Film, Info, AlertTriangle, X, RefreshCw, 
+  Sparkles, CheckCircle, Trash2, Clock, Calendar, ChevronDown 
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
+import { cn } from '@/lib/utils';
 
 interface Movie {
   id: number;
@@ -32,12 +36,23 @@ interface Notification {
 }
 
 const getNotificationIcon = (type: Notification['type']) => {
-  switch (type) {
-    case 'success': return <CheckCircle className="h-5 w-5 text-green-500" />;
-    case 'warning': return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
-    case 'error': return <X className="h-5 w-5 text-red-500" />;
-    default: return <Info className="h-5 w-5 text-blue-500" />;
-  }
+  const icons = {
+    success: <CheckCircle className="h-5 w-5 text-green-500 animate-pulse-subtle" />,
+    warning: <AlertTriangle className="h-5 w-5 text-yellow-500 animate-bounce-subtle" />,
+    error: <X className="h-5 w-5 text-red-500 animate-shake-subtle" />,
+    info: <Info className="h-5 w-5 text-blue-500 animate-pulse-subtle" />
+  };
+  return icons[type];
+};
+
+const getNotificationColor = (type: Notification['type']) => {
+  const colors = {
+    success: 'border-green-200 bg-green-50/50',
+    warning: 'border-yellow-200 bg-yellow-50/50',
+    error: 'border-red-200 bg-red-50/50',
+    info: 'border-blue-200 bg-blue-50/50'
+  };
+  return colors[type];
 };
 
 export default function NotificationsPage() {
@@ -45,6 +60,8 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<'all' | 'unread'>('all');
+  const [expandedNotifications, setExpandedNotifications] = useState<Set<number>>(new Set());
   const router = useRouter();
 
   useEffect(() => {
@@ -54,33 +71,26 @@ export default function NotificationsPage() {
     }
 
     fetchNotifications();
-    const refreshInterval = setInterval(fetchNotifications, 5 * 60 * 1000); 
+    const refreshInterval = setInterval(fetchNotifications, 5 * 60 * 1000);
     
     return () => clearInterval(refreshInterval);
   }, [user, router]);
 
   const fetchNotifications = async () => {
-    if (!user) return; 
+    if (!user) return;
     setIsLoading(true);
     try {
-      const response = await axios.get('/notifications', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await axios.get('/notifications');
       
       if (response.data && Array.isArray(response.data)) {
         const sortedNotifications = [...response.data].sort((a, b) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
         setNotifications(sortedNotifications);
-      } else {
-        setNotifications([]);
       }
     } catch (error) {
       console.error('Error fetching notifications:', error);
-      setNotifications([]);
+      toast.error('Failed to load notifications');
     } finally {
       setIsLoading(false);
     }
@@ -88,36 +98,25 @@ export default function NotificationsPage() {
 
   const markAsRead = async (notificationId: number) => {
     try {
-      await axios.post(`/notifications/${notificationId}/mark-read`, {}, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
+      await axios.post(`/notifications/${notificationId}/mark-read`);
       setNotifications(notifications.map(n => 
         n.id === notificationId ? { ...n, read: true } : n
       ));
+      toast.success('Marked as read');
     } catch (error) {
       console.error('Error marking notification as read:', error);
-      toast.error('Failed to mark notification as read');
+      toast.error('Failed to mark as read');
     }
   };
 
   const markAllAsRead = async () => {
     setIsLoading(true);
     try {
-      await axios.post('/notifications/mark-all-read', {}, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
+      await axios.post('/notifications/mark-all-read');
       setNotifications(notifications.map(n => ({ ...n, read: true })));
       toast.success('All notifications marked as read');
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+      console.error('Error marking all as read:', error);
       toast.error('Failed to mark all as read');
     } finally {
       setIsLoading(false);
@@ -125,37 +124,21 @@ export default function NotificationsPage() {
   };
 
   const deleteNotification = async (notificationId: number) => {
-    setIsLoading(true);
     try {
-      await axios.delete(`/notifications/${notificationId}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
+      await axios.delete(`/notifications/${notificationId}`);
       setNotifications(notifications.filter(n => n.id !== notificationId));
       toast.success('Notification deleted');
     } catch (error) {
       console.error('Error deleting notification:', error);
       toast.error('Failed to delete notification');
-    } finally {
-      setIsLoading(false);
     }
   };
-
 
   const deleteAllNotifications = async () => {
     if (window.confirm('Are you sure you want to delete all notifications? This cannot be undone.')) {
       setIsLoading(true);
       try {
-        await axios.delete('/notifications', {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        
+        await axios.delete('/notifications');
         setNotifications([]);
         toast.success('All notifications deleted');
       } catch (error) {
@@ -170,18 +153,11 @@ export default function NotificationsPage() {
   const handleCreateTestNotification = async () => {
     setIsGenerating(true);
     try {
-      const response = await axios.get('/movies/popular?limit=30', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
+      const response = await axios.get('/movies/popular?limit=30');
       const allMovies = response.data || [];
       
       if (allMovies.length === 0) {
-        toast.error('Nu sunt filme disponibile pentru notificare');
-        setIsGenerating(false);
+        toast.error('No movies available for notification');
         return;
       }
       
@@ -192,29 +168,18 @@ export default function NotificationsPage() {
       
       const randomCount = Math.floor(Math.random() * 3) + 1;
       const selectedMovies = getRandomMovies(allMovies, randomCount);
-      
       const movieTitles = selectedMovies.map((movie: Movie) => movie.title).join(', ');
       
       const notificationTitles = [
-        'Recomandări de filme',
-        'Filme care ți-ar putea plăcea',
-        'Pentru vizionarea ta',
-        'Descoperă filme noi',
-        'Adăugate recent pentru tine'
+        'New Movie Recommendations',
+        'Movies You Might Like',
+        'Personalized Picks',
+        'Discover New Films',
+        'Trending Now'
       ];
-      
-      const notificationMessages = [
-        `Încearcă aceste filme: ${movieTitles}`,
-        `Credem că ți-ar plăcea: ${movieTitles}`,
-        `Selectate special pentru tine: ${movieTitles}`,
-        `Filme recomandate astăzi: ${movieTitles}`,
-        `Ce-ar fi să vizionezi: ${movieTitles}`
-      ];
-      
-      const notificationTypes = ['info', 'success', 'warning'];
       
       const randomTitle = notificationTitles[Math.floor(Math.random() * notificationTitles.length)];
-      const randomMessage = notificationMessages[Math.floor(Math.random() * notificationMessages.length)];
+      const notificationTypes = ['info', 'success', 'warning'];
       const randomType = notificationTypes[Math.floor(Math.random() * notificationTypes.length)] as 'info' | 'success' | 'warning';
       
       const metadata = JSON.stringify({
@@ -229,21 +194,17 @@ export default function NotificationsPage() {
       await axios.post('/notifications', null, {
         params: { 
           title: randomTitle,
-          message: randomMessage,
+          message: `Check out these movies: ${movieTitles}`,
           type: randomType,
           metadata: metadata
-        },
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
         }
       });
       
-      toast.success('Notificare de test creată cu succes');
+      toast.success('Test notification created');
       await fetchNotifications();
     } catch (error) {
-      console.error('Eroare la crearea notificării de test:', error);
-      toast.error('Nu s-a putut crea notificarea de test');
+      console.error('Error creating test notification:', error);
+      toast.error('Failed to create test notification');
     } finally {
       setIsGenerating(false);
     }
@@ -253,6 +214,16 @@ export default function NotificationsPage() {
     router.push(`/movies/${movieId}`);
   };
 
+  const toggleNotificationExpansion = (notificationId: number) => {
+    const newExpanded = new Set(expandedNotifications);
+    if (newExpanded.has(notificationId)) {
+      newExpanded.delete(notificationId);
+    } else {
+      newExpanded.add(notificationId);
+    }
+    setExpandedNotifications(newExpanded);
+  };
+
   const getTimeAgo = (dateString: string): string => {
     const date = new Date(dateString);
     const now = new Date();
@@ -260,13 +231,13 @@ export default function NotificationsPage() {
     const diffMinutes = Math.floor(diffMs / (1000 * 60));
     
     if (diffMinutes < 1) return 'just now';
-    if (diffMinutes < 60) return `${diffMinutes} min ago`;
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
     
     const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
     
     const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 30) return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+    if (diffDays < 30) return `${diffDays}d ago`;
     
     return date.toLocaleDateString();
   };
@@ -277,21 +248,40 @@ export default function NotificationsPage() {
     try {
       const metadata = JSON.parse(notification.metadata) as NotificationMetadata;
       
-      if ((metadata.type === 'daily_recommendations' || metadata.type === 'test_recommendations') && metadata.movies) {
+      if (metadata.movies) {
         return (
-          <div className="mt-3 space-y-2 bg-gray-50 p-3 rounded-md">
-            <p className="text-sm font-medium">Recommended Movies:</p>
-            <div className="grid grid-cols-1 gap-2">
-              {metadata.movies.map((movie) => (
-                <div 
-                  key={movie.id}
-                  className="flex items-center p-2 rounded-md hover:bg-gray-100 transition-colors cursor-pointer border"
-                  onClick={() => handleMovieClick(movie.id)}
-                >
-                  <Film className="h-4 w-4 mr-2 text-primary" />
-                  <span className="text-sm">{movie.title}</span>
-                </div>
-              ))}
+          <div className={cn(
+            "mt-4 transition-all duration-300",
+            expandedNotifications.has(notification.id) ? "opacity-100" : "opacity-0 h-0 overflow-hidden"
+          )}>
+            <div className="bg-gradient-to-r from-primary/5 to-secondary/5 p-4 rounded-lg border border-primary/10">
+              <p className="text-sm font-medium mb-3 flex items-center gap-2">
+                <Film className="w-4 h-4 text-primary" />
+                Recommended Movies
+              </p>
+              <div className="grid grid-cols-1 gap-2">
+                {metadata.movies.map((movie, index) => (
+                  <div 
+                    key={movie.id}
+                    className={cn(
+                      "flex items-center p-3 rounded-lg",
+                      "bg-white hover:bg-primary/5 transition-all duration-300",
+                      "cursor-pointer group hover:shadow-md",
+                      "animate-slide-in"
+                    )}
+                    style={{ animationDelay: `${index * 100}ms` }}
+                    onClick={() => handleMovieClick(movie.id)}
+                  >
+                    <div className="p-2 bg-primary/10 rounded-full group-hover:bg-primary/20 transition-colors">
+                      <Film className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="text-sm font-medium ml-3 group-hover:text-primary transition-colors">
+                      {movie.title}
+                    </span>
+                    <ChevronDown className="ml-auto h-4 w-4 text-gray-400 group-hover:text-primary rotate-[-90deg] transition-all" />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         );
@@ -303,23 +293,19 @@ export default function NotificationsPage() {
     return null;
   };
 
-  const getLatestNotificationTime = (): string => {
-    if (notifications.length === 0) {
-      return 'No notifications yet';
-    }
-    
-    const latestNotification = notifications[0]; 
-    return getTimeAgo(latestNotification.created_at);
-  };
+  const filteredNotifications = selectedFilter === 'unread' 
+    ? notifications.filter(n => !n.read)
+    : notifications;
 
   if (!user) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <Card>
+        <Card className="max-w-md mx-auto">
           <CardContent className="py-8 text-center">
-            <p className="text-gray-500">Please log in to view your notifications</p>
+            <Bell className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+            <p className="text-gray-500 mb-4">Please log in to view your notifications</p>
             <Button 
-              className="mt-4" 
+              className="bg-gradient-to-r from-primary to-primary/80"
               onClick={() => router.push('/login')}
             >
               Log In
@@ -331,110 +317,163 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
-          <Bell className="w-8 h-8" />
-          Notifications
-        </h1>
-        <p className="text-gray-600">Your updates and recommendations</p>
-      </div>
-
-      <Card className="mb-6">
-        <CardContent className="py-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-medium">Notification Controls</h3>
-              <p className="text-sm text-gray-500">Latest notification: {getLatestNotificationTime()}</p>
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8 animate-fade-in">
+          <h1 className="text-4xl font-bold mb-3 flex items-center gap-3">
+            <div className="p-2 bg-primary/10 rounded-xl">
+              <Bell className="w-8 h-8 text-primary animate-pulse" />
             </div>
-            <div className="flex flex-wrap gap-2 justify-end">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={fetchNotifications}
-                disabled={isLoading}
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
+            <span className="bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+              Notifications
+            </span>
+          </h1>
+          <p className="text-gray-600 text-lg">Stay updated with your movie recommendations</p>
+        </div>
+
+        <Card className="mb-6 shadow-lg border-0 animate-slide-up">
+          <CardContent className="py-6">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Notification Center</h3>
+                <div className="flex items-center gap-4 text-sm text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-4 h-4" />
+                    Last update: {notifications.length > 0 ? getTimeAgo(notifications[0].created_at) : 'Never'}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Bell className="w-4 h-4" />
+                    {notifications.filter(n => !n.read).length} unread
+                  </span>
+                </div>
+              </div>
               
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={markAllAsRead}
-                disabled={isLoading || !notifications.some(n => !n.read)}
-              >
-                <Check className="h-4 w-4 mr-2" />
-                Mark All Read
-              </Button>
-              
-              {notifications.length > 0 && (
+              <div className="flex flex-wrap gap-2">
                 <Button 
-                  variant="outline"
+                  variant="outline" 
                   size="sm"
-                  onClick={deleteAllNotifications}
+                  onClick={fetchNotifications}
                   disabled={isLoading}
-                  className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                  className="hover:border-primary transition-colors"
                 >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete All
+                  <RefreshCw className={cn("h-4 w-4 mr-2", isLoading && "animate-spin")} />
+                  Refresh
                 </Button>
-              )}
-              
-              <Button 
-                variant="default" 
-                size="sm" 
-                onClick={handleCreateTestNotification}
-                disabled={isGenerating}
-              >
-                <Sparkles className="h-4 w-4 mr-2" />
-                {isGenerating ? 'Creating...' : 'Generate Notification'}
-              </Button>
+                
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={markAllAsRead}
+                  disabled={isLoading || !notifications.some(n => !n.read)}
+                  className="hover:border-primary transition-colors"
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  Mark All Read
+                </Button>
+                
+                {notifications.length > 0 && (
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={deleteAllNotifications}
+                    disabled={isLoading}
+                    className="text-red-500 hover:text-red-700 hover:bg-red-50 hover:border-red-300 transition-all"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete All
+                  </Button>
+                )}
+                
+                <Button 
+                  size="sm" 
+                  onClick={handleCreateTestNotification}
+                  disabled={isGenerating}
+                  className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg transition-all"
+                >
+                  <Sparkles className={cn("h-4 w-4 mr-2", isGenerating && "animate-pulse")} />
+                  {isGenerating ? 'Creating...' : 'Generate Test'}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="flex gap-4 mb-6">
+          <Button
+            variant={selectedFilter === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setSelectedFilter('all')}
+            className={cn(
+              "transition-all",
+              selectedFilter === 'all' && "shadow-lg"
+            )}
+          >
+            All ({notifications.length})
+          </Button>
+          <Button
+            variant={selectedFilter === 'unread' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setSelectedFilter('unread')}
+            className={cn(
+              "transition-all",
+              selectedFilter === 'unread' && "shadow-lg"
+            )}
+          >
+            Unread ({notifications.filter(n => !n.read).length})
+          </Button>
+        </div>
+
+        {isLoading ? (
+          <div className="flex justify-center py-12">
+            <div className="relative">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+              <div className="absolute inset-0 animate-ping rounded-full h-12 w-12 border-b-2 border-primary/30"></div>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex justify-between items-center mb-6">
-        <div className="text-sm text-gray-500">
-          {notifications.filter(n => !n.read).length} unread notifications
-        </div>
-        {notifications.some(n => !n.read) && (
-          <Button variant="outline" size="sm" onClick={markAllAsRead}>
-            Mark all as read
-          </Button>
-        )}
-      </div>
-
-      {isLoading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
-        </div>
-      ) : notifications.length > 0 ? (
-        <div className="space-y-4">
-          {notifications.map((notification) => (
-            <Card key={notification.id} className={notification.read ? 'opacity-75' : ''}>
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-2">
-                    {getNotificationIcon(notification.type)}
-                    <CardTitle className="text-base">
-                      {notification.title}
-                      {!notification.read && (
-                        <Badge variant="secondary" className="ml-2 text-xs">New</Badge>
-                      )}
-                    </CardTitle>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">
-                      {getTimeAgo(notification.created_at)}
-                    </span>
-                    <div className="flex gap-1">
+        ) : filteredNotifications.length > 0 ? (
+          <div className="space-y-4">
+            {filteredNotifications.map((notification, index) => (
+              <Card 
+                key={notification.id} 
+                className={cn(
+                  "transition-all duration-300 border-2 animate-scale-fade-in",
+                  notification.read ? 'opacity-75' : 'shadow-lg',
+                  getNotificationColor(notification.type)
+                )}
+                style={{ animationDelay: `${index * 100}ms` }}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5">
+                        {getNotificationIcon(notification.type)}
+                      </div>
+                      <div className="flex-1">
+                        <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                          {notification.title}
+                          {!notification.read && (
+                            <Badge variant="default" className="animate-pulse">New</Badge>
+                          )}
+                        </CardTitle>
+                        <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(notification.created_at).toLocaleDateString()}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {getTimeAgo(notification.created_at)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-1">
                       {!notification.read && (
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="h-7 w-7" 
+                          className="h-8 w-8 hover:bg-green-50 hover:text-green-600 transition-colors" 
                           onClick={() => markAsRead(notification.id)}
                           title="Mark as read"
                         >
@@ -444,7 +483,7 @@ export default function NotificationsPage() {
                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-7 w-7 text-red-500 hover:text-red-700" 
+                        className="h-8 w-8 hover:bg-red-50 hover:text-red-600 transition-colors" 
                         onClick={() => deleteNotification(notification.id)}
                         title="Delete notification"
                       >
@@ -452,33 +491,56 @@ export default function NotificationsPage() {
                       </Button>
                     </div>
                   </div>
+                </CardHeader>
+                
+                <CardContent>
+                  <p className="text-gray-700 mb-2">{notification.message}</p>
+                  
+                  {notification.metadata && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleNotificationExpansion(notification.id)}
+                      className="text-primary hover:text-primary/80 p-0 h-auto font-medium"
+                    >
+                      <ChevronDown className={cn(
+                        "w-4 h-4 mr-1 transition-transform",
+                        expandedNotifications.has(notification.id) && "rotate-180"
+                      )} />
+                      {expandedNotifications.has(notification.id) ? 'Hide' : 'Show'} Recommendations
+                    </Button>
+                  )}
+                  
+                  {renderRecommendationContent(notification)}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card className="shadow-lg border-0">
+            <CardContent className="py-12 text-center">
+              <div className="relative inline-block">
+                <Bell className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                <div className="absolute bottom-2 right-0 h-6 w-6 bg-gray-200 rounded-full flex items-center justify-center">
+                  <span className="text-xs font-bold text-gray-600">0</span>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-700">{notification.message}</p>
-                {renderRecommendationContent(notification)}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <Card>
-          <CardContent className="py-8 text-center">
-            <Bell className="h-10 w-10 mx-auto mb-4 text-gray-400" />
-            <p className="text-gray-500">No notifications to display</p>
-          </CardContent>
-          <CardFooter className="flex justify-center">
-            <Button 
-              variant="outline" 
-              onClick={handleCreateTestNotification}
-              disabled={isGenerating}
-            >
-              <Sparkles className="h-4 w-4 mr-2" />
-              Generate Test Notification
-            </Button>
-          </CardFooter>
-        </Card>
-      )}
+              </div>
+              <p className="text-gray-500 text-lg mb-6">
+                {selectedFilter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
+              </p>
+              <Button 
+                variant="outline" 
+                onClick={handleCreateTestNotification}
+                disabled={isGenerating}
+                className="hover:border-primary transition-colors"
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                Generate Test Notification
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
