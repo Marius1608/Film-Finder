@@ -3,8 +3,6 @@
 A modern movie recommendation system built with Next.js and Python FastAPI that helps users discover their next favorite film through intelligent recommendations.
 
 
-![image](https://github.com/user-attachments/assets/26a7c665-73c3-4015-8b64-5fcb04f42d65)
-
 
 ## Features ✨
 
