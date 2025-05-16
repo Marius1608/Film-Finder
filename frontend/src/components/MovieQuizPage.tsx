@@ -36,6 +36,7 @@ export default function MovieQuizPage() {
   const [score, setScore] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);
+  const [quizStarted, setQuizStarted] = useState(false); 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,8 +45,11 @@ export default function MovieQuizPage() {
       return;
     }
     
-    startQuiz();
-  }, [user]);
+    if (!quizStarted) {
+      startQuiz();
+      setQuizStarted(true); 
+    }
+  }, [user, router, quizStarted]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -133,9 +137,9 @@ export default function MovieQuizPage() {
     
     setIsLoading(false);
     
-    setMessages(prev => [...prev, {
+    setMessages([{
       role: 'assistant',
-      content: `Great! I've prepared 5 questions for you using ${source === 'AI' ? 'AI' : 'our database'}. Let's start with question 1:`,
+      content: `Great! I've prepared 5 questions for you using ${source === 'AI' ? 'AI' : 'our database'}.`,
       timestamp: new Date()
     }]);
   };
@@ -188,6 +192,7 @@ export default function MovieQuizPage() {
     setScore(0);
     setSelectedAnswer(null);
     setShowResult(false);
+    setQuizStarted(false); 
     startQuiz();
   };
 
@@ -258,7 +263,7 @@ export default function MovieQuizPage() {
                     </div>
                   )}
                   
-                  {!currentQuiz && !isLoading && messages.length > 2 && (
+                  {!currentQuiz && !isLoading && messages.length > 0 && (
                     <div className="flex justify-center mt-4">
                       <Button
                         onClick={playAgain}

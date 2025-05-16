@@ -6,8 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   Brain, BarChart3, Download, FileText, 
-  Gamepad2, Trophy, 
-  TrendingUp, Clock, Award
+  Gamepad2, Trophy,Clock, Award
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -45,14 +44,6 @@ const features = [
     description: 'Visualize your movie ratings with beautiful charts and graphs',
     icon: <BarChart3 className="w-6 h-6" />,
     color: 'from-blue-500 to-cyan-500',
-    comingSoon: false
-  },
-  {
-    id: 'genre-trends',
-    title: 'Genre Trends',
-    description: 'Track your favorite genres over months and years',
-    icon: <TrendingUp className="w-6 h-6" />,
-    color: 'from-green-500 to-emerald-500',
     comingSoon: false
   },
   {
@@ -169,9 +160,6 @@ const handleFeatureClick = async (featureId: string) => {
       break;
     case 'rating-charts':
       router.push('/analytics/ratings');
-      break;
-    case 'genre-trends':
-      router.push('/analytics/genres');
       break;
     default:
       toast('Feature coming soon!', { icon: '🚀' });
@@ -297,7 +285,7 @@ const handleFeatureClick = async (featureId: string) => {
                   </Button>
                 )}
                 
-                {(feature.id === 'rating-charts' || feature.id === 'genre-trends') && (
+                {(feature.id === 'rating-charts') && (
                   <Button
                     variant="outline"
                     size="sm"

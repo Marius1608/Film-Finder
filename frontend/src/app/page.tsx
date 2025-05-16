@@ -67,7 +67,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      {/* Hero Section */}
       <section className={cn(
         "relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-secondary/10",
         "py-20 md:py-32 transition-all duration-1000",
@@ -149,7 +148,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Features Section */}
       {!user && (
         <section className="py-16 bg-gray-50">
           <div className="container mx-auto px-4">
@@ -177,7 +175,6 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* Stats Section for logged in users */}
       {user && (
         <section className="py-12 bg-gradient-to-r from-primary/5 to-secondary/5">
           <div className="container mx-auto px-4">
@@ -185,7 +182,7 @@ export default function HomePage() {
               <Card className="border-0 shadow-lg animate-scale-in">
                 <CardContent className="p-6 text-center">
                   <Film className="w-8 h-8 text-primary mx-auto mb-2" />
-                  <p className="text-3xl font-bold">{movies.length || 0}</p>
+                  <p className="text-3xl font-bold">1000+</p>
                   <p className="text-gray-600">Movies Available</p>
                 </CardContent>
               </Card>
@@ -215,7 +212,6 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* Movies Section */}
       <section className="container mx-auto px-4 py-12">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-8">
           <div>
@@ -274,7 +270,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Movie Grid */}
         {isLoading ? (
           <div className="flex flex-col justify-center items-center min-h-[400px]">
             <div className="relative">
@@ -335,7 +330,6 @@ export default function HomePage() {
         )}
       </section>
 
-      {/* Call to Action */}
       {!user && (
         <section className="py-20 bg-gradient-to-r from-primary to-secondary text-white">
           <div className="container mx-auto px-4 text-center">
