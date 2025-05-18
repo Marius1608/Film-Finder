@@ -1,238 +1,291 @@
-# FilmFinder 🎬
-
-A modern movie recommendation system built with Next.js and Python FastAPI that helps users discover their next favorite film through intelligent recommendations.
-
+FilmFinder 🎬
+A modern movie recommendation system built with Next.js and FastAPI that helps users discover their next favorite film through intelligent recommendations and a beautiful, interactive interface.
 
 
-## Features ✨
+![Screenshot 2025-05-18 162642](https://github.com/user-attachments/assets/7140837a-cb13-46c6-a296-a70ad3b92feb)
 
-- **Movie Discovery**: Browse through an extensive collection of films
-- **Smart Recommendations**: Get personalized movie suggestions using collaborative and content-based filtering
-- **User Authentication**: Secure login and registration system
-- **Watchlist Management**: Save movies to watch later
-- **Movie Ratings**: Rate movies and see community ratings
-- **Interactive Chat Assistant**: Ask questions about movies using AI (Groq/OpenAI)
-- **Notifications**: Receive movie recommendations and updates
-- **Advanced Search**: Filter movies by genre, year, and ratings
-- **Profile Management**: Track your movie-watching statistics
 
-## Tech Stack 🛠️
+![Screenshot 2025-05-18 162654](https://github.com/user-attachments/assets/8b6f7247-1648-4325-8d1d-2c1632ae542a)
 
-### Frontend
-- **Next.js 15.3.1** - React framework with TypeScript
-- **Tailwind CSS** - Styling
-- **shadcn/ui** - UI component library
-- **React Query (TanStack)** - Data fetching and caching
-- **Lucide Icons** - Icon library
-- **Axios** - HTTP client
 
-### Backend
-- **FastAPI** - Python web framework
-- **SQLAlchemy** - ORM for database management
-- **MySQL** - Primary database
-- **Scikit-learn** - Machine learning for recommendations
-- **Groq API** - Chat functionality
-- **Passlib + JWT** - Authentication
+Features ✨
 
-## Installation 🚀
+Movie Discovery: Browse through a curated collection of films with advanced filtering options
+Smart Recommendations: Get personalized movie suggestions using hybrid recommendation algorithms:
 
-### Prerequisites
-- Node.js (v18 or higher)
-- Python (3.8+)
-- MySQL
-- TMDB API Key (for movie posters)
+Collaborative Filtering: Based on what similar users enjoy
+Content-Based Filtering: Based on movie attributes like genres
+Hybrid Approach: Combines multiple methods for optimal suggestions
 
-### Backend Setup
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/filmfinder.git
+User Authentication: Secure login and registration system with JWT authentication
+Watchlist Management: Save movies to watch later with priority settings
+Movie Ratings: Rate movies and see community ratings with interactive star components
+AI Chat Assistant: Ask questions about specific movies using AI-powered chat (Groq/OpenAI)
+Notifications System: Receive daily movie recommendations and app updates
+Advanced Search & Filtering: Find movies by title, genre, year, and ratings
+User Profiles: Track your movie activity, statistics, and preferences
+Responsive Design: Beautiful UI that works great on mobile and desktop
+Dark/Light Mode: Choose your preferred color theme
+Data Export: Export your ratings and watchlist data
+Movie Analysis: View insights about your movie preferences and watching habits
+
+
+Tech Stack 🛠️
+Frontend
+
+Next.js 15.3.1 - React framework with TypeScript
+Tailwind CSS - Utility-first CSS framework
+shadcn/ui - UI component library with Radix UI
+TanStack Query - Data fetching, caching, and state management
+Lucide Icons - Modern icon library
+Axios - HTTP client
+React Hook Form - Form handling
+Recharts - Data visualization components
+
+Backend
+
+FastAPI - High-performance Python web framework
+SQLAlchemy - SQL toolkit and ORM
+MySQL - Relational database
+scikit-learn - Machine learning for recommendations
+NumPy & Pandas - Data processing
+Groq API - AI-powered chat capabilities
+JWT Authentication - Secure user authentication
+Pydantic - Data validation
+TMDB API - Movie metadata and images
+
+
+Installation 🚀
+Prerequisites
+
+Node.js (v18 or higher)
+Python (3.8+)
+MySQL
+TMDB API Key (for movie posters)
+Groq API Key (optional, for AI chat)
+
+Backend Setup
+
+Clone the repository:
+
+bashgit clone https://github.com/yourusername/filmfinder.git
 cd filmfinder/backend
-```
 
-2. Create a virtual environment and install dependencies:
-```bash
-python -m venv venv
+Create a virtual environment and install dependencies:
+
+bashpython -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
-```
 
-3. Create a `.env` file in the backend directory:
-```env
-DB_USER=root
+Create a .env file in the backend directory:
+
+envDB_USER=root
 DB_PASSWORD=your_mysql_password
 DB_HOST=localhost
 DB_NAME=filmfinder_db
 DB_PORT=3306
 
 TMDB_API_KEY=your_tmdb_api_key
-GROQ_API_KEY=your_groq_api_key      
-```
+GROQ_API_KEY=your_groq_api_key
+OPENAI_API_KEY=your_openai_api_key  # Optional alternative to Groq
 
-4. Create the database:
-```sql
-CREATE DATABASE filmfinder_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
+Create the database:
 
-5. Run database migrations and load initial data:
-```bash
-python scripts/create_tables.py
+sqlCREATE DATABASE filmfinder_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+Run database migrations and load initial data:
+
+bashpython scripts/create_tables.py
 python scripts/data_loader.py
-python scripts/fetch_posters.py  # Optional: fetches movie posters
-```
+python scripts/data_preprocessor.py  # Processes recommendation data
+python scripts/fetch_posters.py  # Fetches movie posters from TMDB
 
-6. Start the backend server:
-```bash
-uvicorn api:app --reload --host 0.0.0.0 --port 8000
-```
+Start the backend server:
 
-### Frontend Setup
+bashuvicorn api:app --reload --host 0.0.0.0 --port 8000
+Frontend Setup
 
-1. Navigate to the frontend directory:
-```bash
-cd ../frontend
-```
+Navigate to the frontend directory:
 
-2. Install dependencies:
-```bash
-npm install
+bashcd ../frontend
+
+Install dependencies:
+
+bashnpm install
 # or
 yarn install
-```
 
-3. Create a `.env.local` file:
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
+Create a .env.local file:
+
+envNEXT_PUBLIC_API_URL=http://localhost:8000
 NEXT_PUBLIC_TMDB_API_KEY=your_tmdb_api_key
 NEXT_PUBLIC_TMDB_IMAGE_BASE_URL=https://image.tmdb.org/t/p/w500
-```
 
-4. Start the development server:
-```bash
-npm run dev
+Start the development server:
+
+bashnpm run dev
 # or
 yarn dev
-```
-
-Visit [http://localhost:3000](http://localhost:3000) to see the application.
-
-## Project Structure 📁
-
-```
+Visit http://localhost:3000 to see the application.
+Project Structure 📁
 filmfinder/
 ├── backend/
-│   ├── api.py              # Main FastAPI application
-│   ├── auth/               # Authentication module
-│   ├── database/           # Database models and connection
-│   ├── machine_learning/   # Recommendation engine
-│   ├── scripts/            # Data processing scripts
+│   ├── api.py                  # Main FastAPI application
+│   ├── auth/                   # Authentication module
+│   │   └── auth.py             # JWT authentication
+│   ├── database/
+│   │   ├── connection.py       # Database connection
+│   │   └── models.py           # SQLAlchemy models
+│   ├── machine_learning/
+│   │   └── RecommendationEngine.py  # ML algorithms
+│   ├── scripts/
+│   │   ├── data_loader.py      # Movie data import
+│   │   ├── data_preprocessor.py # Preprocess data for recommendations
+│   │   └── fetch_posters.py    # Fetch movie posters
 │   └── requirements.txt
 │
 └── frontend/
     ├── src/
-    │   ├── app/            # Next.js app directory
-    │   ├── components/     # React components
-    │   ├── contexts/       # React contexts
-    │   ├── hooks/          # Custom hooks
-    │   ├── lib/            # Utility functions
-    │   ├── types/          # TypeScript types
-    │   └── services/       # API services
-    ├── public/             # Static assets
+    │   ├── app/                # Next.js app directory
+    │   │   ├── movies/         # Movie pages
+    │   │   ├── profile/        # User profile pages
+    │   │   └── [other routes]  # Various app routes
+    │   ├── components/         # React components
+    │   │   ├── MovieCard.tsx   # Movie card component
+    │   │   ├── RatingStars.tsx # Star rating component
+    │   │   ├── MovieChatAssistant.tsx # AI chat interface
+    │   │   └── [other components]
+    │   ├── contexts/
+    │   │   └── AuthContext.tsx # Authentication context
+    │   ├── hooks/
+    │   │   └── useMovies.ts    # Movie data fetching hooks
+    │   ├── lib/
+    │   │   └── api-client.ts   # API client
+    │   └── types/
+    │       └── movie.ts        # TypeScript types
+    ├── public/                 # Static assets
     └── package.json
-```
+Key API Endpoints 📡
+Authentication
 
-## API Endpoints 📡
+POST /auth/register - Register new user
+POST /auth/token - Login and get JWT token
+GET /auth/me - Get current user profile
 
-### Authentication
-- `POST /auth/register` - Register new user
-- `POST /auth/token` - Login
-- `GET /auth/me` - Get current user
+Movies
 
-### Movies
-- `GET /movies/popular` - Get popular movies
-- `GET /movies/{movie_id}` - Get movie details
-- `GET /movies/all` - Get all movies with pagination
-- `POST /search` - Search movies
+GET /movies/popular - Get popular movies
+GET /movies/{movie_id} - Get movie details
+GET /movies/all - Get all movies with pagination and sorting
+POST /search - Search movies by title or genre
 
-### Recommendations
-- `POST /movies/{movie_id}/recommendations` - Get recommendations for a movie
-- `POST /users/{user_id}/recommendations` - Get personalized recommendations
+Recommendations
 
-### User Actions
-- `POST /ratings` - Add movie rating
-- `GET /my-ratings` - Get user's ratings
-- `POST /watchlist` - Add to watchlist
-- `GET /watchlist` - Get user's watchlist
-- `DELETE /watchlist/{item_id}` - Remove from watchlist
+POST /movies/{movie_id}/recommendations - Get movie recommendations (hybrid, collaborative, or content-based)
+POST /users/{user_id}/recommendations - Get personalized user recommendations
 
-### Notifications
-- `GET /notifications` - Get user notifications
-- `POST /notifications/{id}/mark-read` - Mark notification as read
+User Actions
 
-### Chat
-- `POST /chatbot/movie-details` - Ask questions about movies
+POST /ratings - Add or update movie rating
+GET /my-ratings - Get user's ratings
+POST /watchlist - Add movie to watchlist
+GET /watchlist - Get user's watchlist
+DELETE /watchlist/{item_id} - Remove from watchlist
+POST /watchlist/priority - Update watchlist priority
 
-## Machine Learning Features 🤖
+Notifications
 
-FilmFinder uses several recommendation algorithms:
+GET /notifications - Get user notifications
+POST /notifications/{id}/mark-read - Mark notification as read
+POST /notifications/mark-all-read - Mark all notifications as read
+DELETE /notifications/{id} - Delete a notification
+DELETE /notifications - Delete all notifications
 
-1. **Collaborative Filtering**: Based on user behavior patterns
-2. **Content-Based Filtering**: Based on movie attributes (genres, etc.)
-3. **Hybrid Approach**: Combines both methods for better accuracy
+Chat
 
-The system analyzes:
-- User ratings
-- Movie genres
-- Viewing patterns
-- User preferences
+POST /chatbot/movie-details - Ask questions about a specific movie
 
-## Development 🔧
+Advanced Features 🔍
+Recommendation Engine
+The system uses multiple recommendation strategies:
 
-### Running Tests
-```bash
-# Backend tests
+Collaborative Filtering: Analyzes user rating patterns to find similar users
+Content-Based Filtering: Recommends movies with similar attributes (genres, etc.)
+Hybrid Approach: Combines both methods for optimal recommendations
+
+AI Chat Assistant
+
+Context-aware movie chat using LLMs (Groq or OpenAI)
+Ask questions about plot, actors, ratings, etc.
+The assistant has knowledge of the specific movie being viewed
+
+User Experience
+
+Animated transitions and hover effects
+Skeleton loading states
+Dynamic movie card displays
+Interactive star rating component
+Responsive layout for all devices
+
+Data Handling
+
+Efficient data loading with pagination
+Client-side caching with TanStack Query
+Real-time notification system
+Data export capabilities for user ratings and watchlists
+
+Development 🔧
+Running Tests
+bash# Backend tests
 cd backend
 pytest
 
 # Frontend tests
 cd frontend
 npm run test
-```
-
-### Linting
-```bash
-# Frontend
+Linting
+bash# Frontend
 npm run lint
-```
-
-### Building for Production
-```bash
-# Frontend
+Building for Production
+bash# Frontend
 npm run build
 npm start
-```
 
+# Backend
+uvicorn api:app --host 0.0.0.0 --port 8000
+Configuration ⚙️
+Environment Variables
+Backend
 
-## Configuration ⚙️
+DB_* - Database configuration
+TMDB_API_KEY - For fetching movie posters and metadata
+GROQ_API_KEY - For AI chat functionality
+OPENAI_API_KEY - Alternative AI provider (optional)
 
-### Environment Variables
+Frontend
 
-#### Backend
-- `DB_*` - Database configuration
-- `TMDB_API_KEY` - For fetching movie posters
-- `OPENAI_API_KEY` - For chat functionality (optional)
-- `GROQ_API_KEY` - Alternative AI provider (optional)
+NEXT_PUBLIC_API_URL - Backend API URL
+NEXT_PUBLIC_TMDB_IMAGE_BASE_URL - TMDB image base URL
+NEXT_PUBLIC_TMDB_API_KEY - TMDB API key
 
-#### Frontend
-- `NEXT_PUBLIC_API_URL` - Backend API URL
-- `NEXT_PUBLIC_TMDB_*` - TMDB configuration
+Screenshots 📸
+[Screenshots will be added here]
+Future Enhancements 🚀
 
+Mobile app version
+Movie trailers integration
+Social features - follow friends, see their ratings
+Advanced analytics dashboard
+Movie recommendation quiz
+Integration with streaming services
+PWA support for offline functionality
 
-## Acknowledgments 🙏
+Acknowledgments 🙏
 
-- [MovieLens](https://grouplens.org/datasets/movielens/) for the dataset
-- [TMDB](https://www.themoviedb.org/) for movie posters and metadata
-- [shadcn/ui](https://ui.shadcn.com/) for UI components
-- [FastAPI](https://fastapi.tiangolo.com/) for the backend framework
-- [Next.js](https://nextjs.org/) for the frontend framework
-
+MovieLens for the dataset
+TMDB for movie posters and metadata
+shadcn/ui for UI components
+FastAPI for the backend framework
+Next.js for the frontend framework
+Groq for AI chat capabilities
